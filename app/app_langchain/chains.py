@@ -307,6 +307,9 @@ class ChunkFormatter(TransformChain):
         )
         return len(tokens)
 
+    def _format_entry_id(self, entry_id: str):
+        url = entry_id.replace("arxiv", "export.arxiv")
+        return url
 
     # --- FORMAT CHUNKS AS EXAMPLES ---
     def _format_chunks(self, chunks):
@@ -314,7 +317,7 @@ class ChunkFormatter(TransformChain):
 
         # Return a array [] of dicts {"chunk": chunk} needed for the example selector
         formatted_chunks = [
-            f"Fuente: [{item['metadata']['title']}]({item['metadata']['url']})"
+            f"Fuente: [{item['metadata']['title']}]({self._format_entry_id(item['metadata']['entry_id'])})"
             f"\n\n"
             f"Relevancia: {100*item['score']:.2f}%"
             f"\n\n"
