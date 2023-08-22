@@ -32,7 +32,7 @@ def load_css():
 app_title = "Q&A Deep Learning Bot"
 st.set_page_config(
     page_title=app_title,
-    initial_sidebar_state='collapsed',
+    initial_sidebar_state='expanded',
 )
 st.title(app_title)
 load_css()
@@ -42,9 +42,8 @@ with st.sidebar:
 
 with tab_faq:
     with st.expander(label=f"¿Qué es {app_title}?", expanded=False):
-        st.write(f"""{app_title} es una aplicacion desarrollada por Rubén Catalán Medina en el trascurso de sus prácticas en la empresa ACCIONA.\n
-                 Esta aplicación ha sido adaptada para trabajar en este TFG con una base de conocimiento sobre Deep Learning, de forma que
-                 permite hacer preguntas sobre temas relacionados.""")
+        st.write(f"{app_title} es una aplicacion desarrollada por Rubén Catalán Medina en el trascurso de sus prácticas en la empresa ACCIONA.")
+        st.write("Esta aplicación ha sido adaptada para trabajar en este TFG con una base de conocimiento sobre Deep Learning, de forma que permite hacer preguntas sobre temas relacionados.")
 
     with st.expander(label=f"¿Qué documentación se ha usado para crear la base de conocimento?", expanded=False):
         st.write(f"""Para la base de conocimiento centrada en Deep Learning se han usado +3500 documentos sobre Machine Learning e Inteligencia Artificial \
