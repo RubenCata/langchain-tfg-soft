@@ -86,10 +86,18 @@ def save_interaction(query, response, config, ai_feedback, chunks, deixis_query)
         session.begin()
 
         chunks_list = []
-        for i in range(0, len(chunks)):
+        for chunk in chunks:
             chunks_list.append({
-                "metadata": chunks[i]["metadata"],
-                "score": chunks[i]["score"],
+                "metadata": {
+                    'entry_id': chunk["metadata"]['entry_id'],
+                    'title': chunk["metadata"]['title'],
+                    'authors': chunk["metadata"]['authors'],
+                    'primary_category': chunk["metadata"]['primary_category'],
+                    'categories': chunk["metadata"]['categories'],
+                    'links': chunk["metadata"]['links'],
+                    'text': chunk["metadata"]['text'],
+                    },
+                "score": chunk["score"],
             })
 
         interaction = Interaction(
