@@ -14,6 +14,7 @@ import app_functions as app
 
 import app_langchain.models as models
 import app_langchain.chains as chains
+import app_langchain.tokens as tokens
 
 
 
@@ -25,7 +26,7 @@ import app_langchain.chains as chains
 # --- WEB TABS & CONFIG ---
 #
 def load_css():
-    with open("static/styles.css", "r") as f:
+    with open("app/static/styles.css", "r") as f:
         css = f"<style>{f.read()}</style>"
         st.markdown(css, unsafe_allow_html=True)
 
@@ -38,7 +39,7 @@ st.title(app_title)
 load_css()
 
 with st.sidebar:
-    tab_faq, tab_config, tab_debug = st.tabs(["FAQ", "Config", "Debug"])
+    tab_conversations, tab_faq, tab_config, tab_debug = st.tabs(["Conversations","FAQ", "Config", "Debug"])
 
 with tab_faq:
     with st.expander(label=f"¿Qué es {app_title}?", expanded=False):
@@ -87,13 +88,11 @@ def get_pinecone_index():
 index = get_pinecone_index()
 namespace_options = sorted(list(index.describe_index_stats()["namespaces"].keys()))
 
-chat_model_no_streaming = models.get_chat_model(handler=models.FakeStreamingCallbackHandlerClass())
-
-
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-app.check_counter_exist()
+
+tokens.check_counter_exist()
 app.create_memory()
 
 #
@@ -150,49 +149,48 @@ if query:
         "slow_down": slow_down,
     }
 
-    db.save_conversation(vars.username)
+    db.save_conversation()
 
 
     # Find a metadata filter, only apply to Confluence namespaces
     if focus_chain_on and ("ddo" in namespace):
         response  = chains.get_chat_response(index, config, history, True, query, widgets)
-        resp_AIMessage = response["response"]
-        filter = response["filter"]
 
-        if filter != None:
-            verify = chains.verify_chain(query, resp_AIMessage, chat_model_no_streaming)
-            app.expander(tab=tab_debug, label="verify", expanded=False, content=verify )
+        if response["filter"] != None:
+            app.expander(tab=tab_debug, label="verify_focus", expanded=False, content=response["ai_feedback"])
+            if response["ai_feedback"] == "False":
+                # Fake Streaming...
+                for word in ["\n\n", "Voy", " ", "a", " ", "buscar", " ", "una", " ", "mejor", " ", "respuesta", "..."]:
+                    MyStreamingCallbackHandler.on_llm_new_token(word)
+                time.sleep(1)
 
-            if verify.content == "False":
-                resp_AIMessage  = chains.get_chat_response(index, config, history, False, query, widgets)["response"]
+                response = chains.get_chat_response(index, config, history, False, query, widgets)
     else:
-        resp_AIMessage  = chains.get_chat_response(index, config, history, False, query, widgets)["response"]
+        response = chains.get_chat_response(index, config, history, False, query, widgets)
 
-    app.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage )
+    resp_AIMessage = response["response"]
+    ai_feedback = response["ai_feedback"]
+    try:
+        ai_feedback = bool(ai_feedback)
+    except:
+        ai_feedback = False
+    app.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage)
+    app.expander(tab=tab_debug, label="ai_feedback", expanded=False, content=ai_feedback)
 
     st.session_state.memory.chat_memory.add_ai_message(resp_AIMessage)
     # msg_box.markdown(resp_AIMessage)
 
-    db.save_interaction(query, resp_AIMessage, config)
+    db.save_interaction(query, resp_AIMessage, config, ai_feedback, response["chunks"], response["deixis_query"])
 
 if "total_cost" in st.session_state and st.session_state.total_cost != 0:
     # st.caption(f"Input tokens: {st.session_state.question_in_tokens}, Output tokens: {st.session_state.question_out_tokens}, Cost: ${st.session_state.question_cost:.2f}")
     # st.caption(f"Total input tokens: {st.session_state.total_in_tokens}, Total output tokens: {st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
 
-    cols = st.columns((10.9,7.26,2.01,2,2))
+    cols = st.columns((10,5,5))
     # cols[0].caption(f"Total tokens: {st.session_state.total_in_tokens + st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
     cols[0].caption(f"Total cost: ${st.session_state.total_cost:.2f}")
-
-    cols[1].button(label=":wastebasket: Eliminar conversación", on_click=app.clear_history, key="del_conversation", use_container_width=True)
-    cols[2].button(label=":wastebasket:", on_click=app.clear_history, key="del_conversation_mini", use_container_width=True)
-    good_feedback = cols[3].button(
-        label=":+1:",
-        use_container_width=True
-    )
-    bad_feedback = cols[4].button(
-        label=":-1:",
-        use_container_width=True,
-    )
+    good_feedback = cols[1].button(label=":+1:", use_container_width=True)
+    bad_feedback = cols[2].button(label=":-1:", use_container_width=True)
     if good_feedback:
         db.save_feedback(True)
     elif bad_feedback:
@@ -201,3 +199,18 @@ if "total_cost" in st.session_state and st.session_state.total_cost != 0:
 del st.session_state.question_in_tokens
 del st.session_state.question_out_tokens
 del st.session_state.question_cost
+
+
+#
+# --- LOAD CONVERSATIONS ---
+#
+with tab_conversations:
+    st.button(":heavy_plus_sign: New Conversation", on_click=app.clear_history, use_container_width=True)
+    upper_box = st.container()
+    if "delete_conversation_id" in st.session_state:
+        app.delete_confirmation_display(upper_box)
+    if "edit_conversation_id" in st.session_state:
+        app.edit_conversation_name_display(upper_box)
+    else:
+        upper_box.divider()
+    db.get_user_conversations(st.container())

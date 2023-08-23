@@ -150,7 +150,6 @@ def pinecone_chunk_retrieval(inputs, index, namespace, top_k, include_metadata, 
     else:
         filter = None
 
-    label = ""
     for key in inputs.keys():
         query = inputs[key]
         app.expander(tab=widgets['tab_debug'], label=key, expanded=(key=="deixis_query"), content=query)
@@ -182,7 +181,7 @@ class ChunkRetrieval(TransformChain):
         inputs: Dict[str, str],
         run_manager: Optional[CallbackManagerForChainRun] = None,
     ) -> Dict[str, str]:
-        return {self.output_variables[0]: self.transform(inputs, self.index, self.namespace, self.top_k, self.include_metadata, self.widgets)}
+        return {self.output_variables[0]: self.transform(inputs, self.index, self.namespace, self.top_k, self.include_metadata, self.widgets)} # output "chunks"
 
 
 #
@@ -367,7 +366,7 @@ class ChunkFormatter(TransformChain):
 #
 # --- VERIFY CHAIN ---
 #
-def verify_chain(query, response, chat_model: None):
+def create_verify_prompt():
     verify_template = """
 For the following given question and response, identify if the response answers to the same topic asked in the question or if it needs more information.
 
@@ -379,8 +378,8 @@ The output must be a boolean. \
 Answer False if the response says that it doesnt have enough information or if it asks the user for more information or is an incompleted answer\
 Answer True otherwise.
     """
-    verify_messages = ChatPromptTemplate.from_template(template=verify_template).format_messages(query=query, response=response)
-    return chat_model(verify_messages)
+    verify_prompt_template = PromptTemplate.from_template(template=verify_template)
+    return verify_prompt_template
 
 
 #
@@ -414,7 +413,7 @@ def create_search_sequential_chain(input_variables, index, config, history, llm,
     return SequentialChain(
         chains=chains,
         input_variables=input_variables,
-        output_variables=["response"],
+        output_variables=["chunks", "response"],
         # verbose=True,
     )
 
@@ -430,6 +429,7 @@ def create_sequential_chain(llm, index, config, history, focus_chain_on, widgets
         input_variables=["initial_query"],
         output_variables=["query"],
     ))
+
     if config["query_deixis_resolution"]:
         chains.append(LLMChain(
             llm=models.get_chat_model(handler=models.FakeStreamingCallbackHandlerClass()),
@@ -442,9 +442,10 @@ def create_sequential_chain(llm, index, config, history, focus_chain_on, widgets
             input_variables=["query"],
             output_variables=["deixis_query"],
         ))
+
     # Find a metadata filter, only apply to Confluence namespaces
     if focus_chain_on and ("ddo" in config["namespace"]):
-        output_variables = ["response", "filter"]
+        output_variables = ["filter"]
         chains.append(FocusChain(
             transform=focus_func,
             input_variables=["deixis_query"],
@@ -463,7 +464,7 @@ def create_sequential_chain(llm, index, config, history, focus_chain_on, widgets
             widgets=widgets,
         ))
     else:
-        output_variables=["response"]
+        output_variables=[]
         chains.append(create_search_sequential_chain(
             input_variables=["query", "deixis_query"],
             index=index,
@@ -473,10 +474,16 @@ def create_sequential_chain(llm, index, config, history, focus_chain_on, widgets
             widgets=widgets,
         ))
 
+    chains.append(LLMChain(
+        llm = models.get_chat_model(handler=models.FakeStreamingCallbackHandlerClass()),
+        prompt=create_verify_prompt(), #Takes "query" and "response"
+        output_key="ai_feedback",
+    ))
+
     return SequentialChain(
         chains=chains,
         input_variables=["initial_query"],
-        output_variables=output_variables,
+        output_variables=output_variables + ["response", "chunks", "ai_feedback", "deixis_query"],
         # verbose=True,
     )
 
@@ -498,3 +505,22 @@ def get_chat_response(index, config, history, focus_chain_on, query, widgets):
     )({"initial_query":query})
     response["response"] = app.replace_urls_with_fqdn_and_lastpath(response["response"])
     return response
+
+
+
+#
+# --- CONVERSATION NAMING CHAIN ---
+#
+def naming_chain(query, response):
+    naming_template = """
+For the following given question and response, identify what the conversation about. Give special relevance to the question and complete with the response if needed.
+
+Question: {query}
+
+Response: {response}
+
+The output must be a title for this conversation in the same language of the given texts.
+Do not use more than 5 words for it.
+    """
+    naming_messages = ChatPromptTemplate.from_template(template=naming_template).format_messages(query=query, response=response)
+    return models.get_chat_model(handler=models.FakeStreamingCallbackHandlerClass())(naming_messages)
