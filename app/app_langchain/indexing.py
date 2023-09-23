@@ -99,7 +99,6 @@ def embed_pdf_to_pinecone(index, chunks, progress_widget):
             'page': x['page'],
             'total_pages': x['total_pages'],
             'chunk': x['chunk'],
-            'username': vars.username,
         } for x in meta]
 
         # upsert batch to Pinecone

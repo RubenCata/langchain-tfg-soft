@@ -157,7 +157,7 @@ def get_last_k_history(k) -> List:
 #
 # --- CONVERSATIONS TAB FUNCTIONS ---
 #
-def user_conversations_display(user_conversations, container):
+def conversations_display(conversations, container):
     with container:
         now = datetime.datetime.now()
         today_caption = False
@@ -165,7 +165,7 @@ def user_conversations_display(user_conversations, container):
         week_caption = False
         month_caption = False
         old_caption = False
-        for conver in user_conversations:
+        for conver in conversations:
             if "sql_conversation_id" in st.session_state and conver.id == st.session_state.sql_conversation_id:
                 button_type = "primary"
             else:
@@ -265,11 +265,11 @@ def delete_conversation_confirmation_display():
 #
 # --- DOCUMENTS TAB FUNCTIONS ---
 #
-def user_documents_display(user_documents, index, container):
+def documents_display(documents, index, container):
     with container:
         if "selected_documents" not in st.session_state:
             st.session_state.selected_documents = set()
-        for doc in user_documents:
+        for doc in documents:
             if doc.selected:
                 st.session_state.selected_documents.add(doc.id)
                 button_type = "primary"

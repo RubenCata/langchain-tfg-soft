@@ -80,7 +80,7 @@ with tab_faq:
 # --- CREATE MYSQL DATABASE ---
 #
 # Use in local DB only to recreate the DB schema (tables) based on ORM SQLAlchemy definition
-# db.create_database()
+db.create_database()
 
 
 
@@ -119,7 +119,7 @@ app.create_memory()
 with tab_conversations:
     st.button(":heavy_plus_sign: New Conversation", on_click=app.clear_history, use_container_width=True)
     st.divider()
-    db.get_user_conversations(st.container())
+    db.get_conversations(st.container())
 
 
 #
@@ -159,7 +159,7 @@ if app_mode == vars.AppMode.DOCUMENTS.value:
                 app.save_uploaded_docs(index, files, progress_widget)
 
         with tab_docs.expander(label="Select Documents", expanded=True):
-            db.get_user_documents(index, st.container())
+            db.get_documents(index, st.container())
 
 #
 # --- MAIN ---

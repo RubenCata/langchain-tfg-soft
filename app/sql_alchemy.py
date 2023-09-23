@@ -22,7 +22,6 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(String(36), primary_key=True)
-    username = Column(String(100))
     name = Column(UnicodeText)
     creation_date = Column(DateTime, default=datetime.now)
     active = Column(Boolean)
@@ -50,7 +49,6 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(String(36), primary_key=True)
-    username = Column(String(100))
     filename = Column(UnicodeText)
     title = Column(UnicodeText)
     upload_date = Column(DateTime, default=datetime.now)
@@ -80,7 +78,6 @@ def save_conversation():
             session.begin()
             sql_conversation = Conversation(
                 id=str(uuid4()),
-                username=vars.username,
                 active=True,
             )
             try:
@@ -154,25 +151,24 @@ def save_feedback(feedback: bool):
             raise
 
 
-def get_user_conversations(container):
+def get_conversations(container):
     with get_sql_session() as session:
         try:
-            user_conversations = session.query(Conversation).filter(
-                Conversation.username == vars.username,
+            conversations = session.query(Conversation).filter(
                 Conversation.active == True,
                 Conversation.name.is_not(None),
                 ).all()
             clean_conversations = []
-            for conver in user_conversations:
+            for conver in conversations:
                 if len(conver.interactions) > 0:
                     clean_conversations.append(conver)
-            sorted_user_conversations = sorted(clean_conversations, key=lambda x: x.interactions[0].timestamp, reverse=True)
+            sorted_conversations = sorted(clean_conversations, key=lambda x: x.interactions[0].timestamp, reverse=True)
         except:
             session.rollback()
-            print("Could not load user conversations: ", vars.username)
+            print("Could not load conversations")
             raise
         else:
-            app.user_conversations_display(sorted_user_conversations, container)
+            app.conversations_display(sorted_conversations, container)
 
 
 def load_conversation(id):
@@ -239,7 +235,6 @@ def save_document(id, filename, title):
         session.begin()
         sql_document = Document(
             id=id,
-            username=vars.username,
             filename=filename,
             title=title,
         )
@@ -251,28 +246,27 @@ def save_document(id, filename, title):
             raise
 
 
-def get_user_documents(index, container):
+def get_documents(index, container):
     with get_sql_session() as session:
         try:
-            user_documents = session.query(Document).filter(Document.username == vars.username).order_by(Document.upload_date.desc()).all()
+            documents = session.query(Document).order_by(Document.upload_date.desc()).all()
         except:
             session.rollback()
-            print("Could not load user documents: ", vars.username)
+            print("Could not load documents")
             raise
         else:
-            app.user_documents_display(user_documents, index, container)
+            app.documents_display(documents, index, container)
 
 
 def get_selected_documents():
     with get_sql_session() as session:
         try:
             selected_documents = session.query(Document).filter(
-                Document.username == vars.username,
                 Document.selected == True,
                 ).all()
         except:
             session.rollback()
-            print("Could not load selected documents: ", vars.username)
+            print("Could not load selected documents")
             raise
         else:
             return [doc.id for doc in selected_documents]
@@ -281,7 +275,6 @@ def get_document_title(document_id):
     with get_sql_session() as session:
         try:
             sql_document = session.query(Document).filter(
-                Document.username == vars.username,
                 Document.id == document_id,
                 ).first()
         except:
@@ -338,8 +331,6 @@ def delete_document(index, bool):
             else:
                 index.delete(
                     filter={
-                        # Solo puede eliminarlo en Pinecone el que lo subió inicialmente
-                        "username": {"$eq": vars.username},
                         "document_id": {"$eq": st.session_state.delete_document_id}
                     },
                     namespace="uploaded-documents"
