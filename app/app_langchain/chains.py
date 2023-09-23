@@ -1,5 +1,4 @@
 import json
-import os
 import re
 from typing import (
     Any,
@@ -33,6 +32,7 @@ import random
 import streamlit as st
 import vars
 import app_functions as app
+import sql_alchemy as db
 
 import app_langchain.models as models
 
@@ -40,6 +40,18 @@ import app_langchain.models as models
 def dummy_func(inputs: dict) -> dict:
     return inputs
 
+
+#
+# --- DUMMY FUNCTION ---
+#
+class DummyChain(TransformChain):
+    """Custom Dummy Chain."""
+    def _call(
+        self,
+        inputs: Dict[str, str],
+        run_manager: Optional[CallbackManagerForChainRun] = None,
+    ) -> Dict[str, str]:
+        return {self.output_variables[0]: inputs[self.input_variables[0]]}
 
 
 #
@@ -76,31 +88,6 @@ Pregunta completa reformulada:
 #
 # --- PINECONE CHUNK RETRIEVAL ---
 #
-def pinecone_chunk_retrieval(inputs, index, namespace, top_k, include_metadata, widgets):
-    if "filter" in inputs.keys():
-        filter = inputs["filter"]
-        inputs.pop("filter")
-    else:
-        filter = None
-
-    for key in inputs.keys():
-        query = inputs[key]
-        app.expander(tab=widgets['tab_debug'], label=key, expanded=(key=="deixis_query"), content=query)
-
-    widgets['msg_box'].chat_message("assistant").write("Requesting query embedding")
-    query_embedding = OpenAIEmbeddings(model=os.environ["EMBEDDING_MODEL"]).embed_query(query)
-
-    widgets['msg_box'].chat_message("assistant").write("Requesting matching embeddings")
-    matching_embeddings = index.query(
-        query_embedding,
-        top_k=top_k,
-        include_metadata=include_metadata,
-        namespace=namespace,
-        filter=filter,
-    )
-    return matching_embeddings.matches
-
-
 class ChunkRetrieval(TransformChain):
     """Custom ChunkRetrieval Chain."""
     index: Any
@@ -108,53 +95,46 @@ class ChunkRetrieval(TransformChain):
     top_k: int = 5
     include_metadata: bool = True
     widgets: Any
+    app_mode: Any
+    documents: Any
+
+    def _pinecone_chunk_retrieval(self, inputs):
+        if "filter" in inputs.keys():
+            filter = inputs["filter"]
+            inputs.pop("filter")
+        elif self.app_mode == vars.AppMode.DOCUMENTS.value:
+            filter={
+                "document_id": {"$in": self.documents}
+            }
+        else:
+            filter = None
+
+        for key in inputs.keys():
+            query = inputs[key]
+            if self.widgets:
+                app.expander(tab=self.widgets['tab_debug'], label=key, expanded=(key=="deixis_query"), content=query)
+
+        if self.widgets:
+            self.widgets['msg_box'].chat_message("assistant").write("Requesting query embedding")
+        query_embedding = OpenAIEmbeddings(model=vars.EMBEDDING_MODEL).embed_query(query)
+
+        if self.widgets:
+            self.widgets['msg_box'].chat_message("assistant").write("Requesting matching embeddings")
+        matching_embeddings = self.index.query(
+            query_embedding,
+            top_k=self.top_k,
+            include_metadata=self.include_metadata,
+            namespace=self.namespace,
+            filter=filter,
+        )
+        return matching_embeddings.matches
 
     def _call(
         self,
         inputs: Dict[str, str],
         run_manager: Optional[CallbackManagerForChainRun] = None,
     ) -> Dict[str, str]:
-        return {self.output_variables[0]: self.transform(inputs, self.index, self.namespace, self.top_k, self.include_metadata, self.widgets)} # output "chunks"
-
-
-#
-# --- CHAT CONVERSATION ---
-#
-def get_chat_system_template()  -> SystemMessagePromptTemplate:
-    system_template = """Te llamas """+vars.AI_NAME+""". Tienes muchos años de experiencia en Deep Learning.
-Tu tarea es responder con datos relevantes sobre el tema indicado por el usuario basandote en tus conocimientos.
-
-En particular, encontraste estos fragmentos de informacion que podrían ser relevantes: \"\"\"\n
-{formatted_chunks}
-\n\"\"\"
-
-Sobre tu respuesta:
-- Responde al usuario usando al máximo toda la información que conoces.
-- Sé lo más detallada posible.
-- Si no puedes encontrar la respuesta en lo que conoces, responde honestamente "No lo sé", haciendo un resumen rápido de la información y pidiéndole al usuario que reescriba su consulta.
-- Responde en español.
-- Responde en formato bullet list o tabla cuando aplique.
-- Al final de tu respuesta, escribe la lista de Fuentes [Título](URL) de los fragmentos que utilizaste para tu respuesta.
-"""
-# Glosario:
-# -
-
-    # Randomly address the user by its name
-    if vars.username != "" and random.randint(0,10) == 0:
-        system_template += f"\n\nRecuerda llamar al usuario por su nombre: {vars.username}."
-
-    return SystemMessagePromptTemplate.from_template(template=system_template)
-
-def create_chat_conversation(history, widgets):
-    conversation = [
-            get_chat_system_template(),
-        ]
-    if history != None:
-        conversation = conversation + history[1:]
-    conversation.append(HumanMessagePromptTemplate.from_template(template="{query}"))
-
-    app.expander(tab=widgets['tab_debug'], label="conversation_template", expanded=False, content=conversation)
-    return conversation
+        return {self.output_variables[0]: self._pinecone_chunk_retrieval(inputs)} # output "chunks"
 
 
 #
@@ -164,6 +144,7 @@ class ChunkFormatter(TransformChain):
     """Custom Chunk Formatter Transform Chain."""
     min_score: Any
     widgets: Any
+    app_mode: Any
     input_variables: List[str] = ["chunks"]
     output_variables: List[str] = ["formatted_chunks"]
 
@@ -190,19 +171,30 @@ class ChunkFormatter(TransformChain):
         return url
 
     # --- FORMAT CHUNKS AS EXAMPLES ---
-    def _format_chunks(self, chunks):
+    def _format_chunks(self, chunks, app_mode):
         self.widgets['msg_box'].chat_message("assistant").write("Creating Prompt")
 
         # Return a array [] of dicts {"chunk": chunk} needed for the example selector
-        formatted_chunks = [
-            f"Fuente: [{item['metadata']['title']}]({self._format_entry_id(item['metadata']['entry_id'])})"
-            f"\n\n"
-            f"Relevancia: {100*item['score']:.2f}%"
-            f"\n\n"
-            f"Título: {item['metadata']['text']}"
+        if app_mode == vars.AppMode.DOCUMENTS.value:
+            formatted_chunks = [
+                f"Fuente: {db.get_document_title(item['metadata']['document_id'])}, Página {int(item['metadata']['page'])} de {int(item['metadata']['total_pages'])}"
+                f"\n\n"
+                f"Relevancia: {100*item['score']:.2f}%"
+                f"\n\n"
+                f"Contenido: {item['metadata']['text']}"
 
-            for item in chunks if item['score'] > self.min_score
-        ]
+                for item in chunks if item['score'] > self.min_score
+            ]
+        else:
+            formatted_chunks = [
+                f"Fuente: [{item['metadata']['title']}]({self._format_entry_id(item['metadata']['entry_id'])})"
+                f"\n\n"
+                f"Relevancia: {100*item['score']:.2f}%"
+                f"\n\n"
+                f"Título: {item['metadata']['text']}"
+
+                for item in chunks if item['score'] > self.min_score
+            ]
         return [{"chunk": self._preTratamiento(chunk)} for chunk in formatted_chunks]
 
 
@@ -236,10 +228,53 @@ class ChunkFormatter(TransformChain):
         inputs: Dict[str, str],
         run_manager: Optional[CallbackManagerForChainRun] = None,
     ) -> Dict[str, str]:
-        formatted_chunks = self._format_chunks(inputs["chunks"])
+        formatted_chunks = self._format_chunks(inputs["chunks"], self.app_mode)
         formatted_chunks = self._few_shot_chunk_selector(formatted_chunks)
         app.expander(tab=self.widgets['tab_debug'], label="formatted_chunks", expanded=False, content=formatted_chunks)
         return {self.output_variables[0]: formatted_chunks}
+
+
+#
+# --- CHAT CONVERSATION ---
+#
+def get_chat_system_template(app_mode)  -> SystemMessagePromptTemplate:
+    if app_mode == vars.AppMode.DEFAULT.value:
+        source_format = '"[Título](URL)"'
+    else:
+        source_format = '"Título, Página X de Y"'
+
+    system_template = """Te llamas """+vars.AI_NAME+""". Tienes muchos años de experiencia en Deep Learning.
+        Tu tarea es responder con datos relevantes sobre el tema indicado por el usuario basandote en tus conocimientos.
+
+        En particular, encontraste estos fragmentos de informacion que podrían ser relevantes: \"\"\"\n
+        {formatted_chunks}
+        \n\"\"\"
+
+        Sobre tu respuesta:
+        - Responde al usuario usando al máximo toda la información que conoces.
+        - Sé lo más detallada posible.
+        - Si no puedes encontrar la respuesta en lo que conoces, responde honestamente "No lo sé", haciendo un resumen rápido de la información y pidiéndole al usuario que reescriba su consulta.
+        - Responde en español.
+        - Responde en formato bullet list o tabla cuando aplique.
+        - Al final de tu respuesta, escribe la lista de Fuentes """+ source_format + """de los fragmentos que utilizaste para tu respuesta.
+        """
+
+    # Randomly address the user by its name
+    if vars.username != "" and random.randint(0,10) == 0:
+        system_template += f"\n\nRecuerda llamar al usuario por su nombre: {vars.username}."
+
+    return SystemMessagePromptTemplate.from_template(template=system_template)
+
+def create_chat_conversation(history, widgets, app_mode):
+    conversation = [
+            get_chat_system_template(app_mode),
+        ]
+    if history != None:
+        conversation = conversation + history
+    conversation.append(HumanMessagePromptTemplate.from_template(template="{query}"))
+
+    app.expander(tab=widgets['tab_debug'], label="conversation_template", expanded=False, content=conversation)
+    return conversation
 
 
 #
@@ -264,25 +299,28 @@ Answer True otherwise.
 #
 # --- SEARCH SEQUENTIAL CHAIN ---
 #
-def create_search_sequential_chain(input_variables, index, config, history, llm, widgets):
+def create_search_sequential_chain(input_variables, index, config, history, llm, widgets, documents):
     chains = []
     chains.append(ChunkRetrieval(
-        transform=pinecone_chunk_retrieval,
+        transform=dummy_func,
         input_variables=["deixis_query"],
         output_variables= ["chunks"],
         index=index,
         widgets=widgets,
         namespace=config["namespace"],
+        app_mode=config["app_mode"],
+        documents=documents,
     ))
     chains.append(ChunkFormatter(
         transform=dummy_func,
-        min_score=config['min_score'],
-        widgets=widgets,
         input_variables=["chunks"],
         output_variables=["formatted_chunks"],
+        min_score=config['min_score'],
+        widgets=widgets,
+        app_mode=config["app_mode"],
     ))
 
-    conversation = create_chat_conversation(history, widgets)
+    conversation = create_chat_conversation(history, widgets, config["app_mode"])
     chains.append(LLMChain(
             llm = llm,
             prompt=ChatPromptTemplate.from_messages(conversation), #Takes "query"
@@ -300,7 +338,7 @@ def create_search_sequential_chain(input_variables, index, config, history, llm,
 #
 # --- GENERIC SEQUENTIAL CHAIN ---
 #
-def create_sequential_chain(llm, index, config, history, focus_chain_on, widgets):
+def create_sequential_chain(llm, index, config, history, widgets, documents):
     chains = []
 
     chains.append(LLMChain(
@@ -316,6 +354,7 @@ def create_sequential_chain(llm, index, config, history, focus_chain_on, widgets
         history=history,
         llm= llm,
         widgets=widgets,
+        documents=documents,
     ))
 
     chains.append(LLMChain(
@@ -335,7 +374,7 @@ def create_sequential_chain(llm, index, config, history, focus_chain_on, widgets
 #
 # --- SEQUENTIAL CHAIN RESPONSE ---
 #
-def get_chat_response(index, config, history, focus_chain_on, query, widgets):
+def get_chat_response(index, config, history, query, widgets, documents = []):
     MyStreamingCallbackHandler = models.MyStreamingCallbackHandlerClass()
     MyStreamingCallbackHandler.set_slow_down(widgets['slow_down'])
     MyStreamingCallbackHandler.set_widget(widgets['msg_box'])
@@ -345,8 +384,8 @@ def get_chat_response(index, config, history, focus_chain_on, query, widgets):
         index=index,
         config=config,
         history=history,
-        focus_chain_on=focus_chain_on,
         widgets=widgets,
+        documents=documents,
     )({"query":query})
     response["response"] = app.replace_urls_with_fqdn_and_lastpath(response["response"])
     return response

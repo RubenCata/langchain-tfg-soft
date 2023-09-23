@@ -38,8 +38,18 @@ st.set_page_config(
 st.title(app_title)
 load_css()
 
+if "app_mode" not in st.session_state:
+    app_mode = vars.AppMode.DEFAULT.value
+else:
+    app_mode = st.session_state.app_mode
+
 with st.sidebar:
-    tab_conversations, tab_faq, tab_config, tab_debug = st.tabs(["Conversations","FAQ", "Config", "Debug"])
+    app_mode = app.get_app_mode(app_mode)
+
+    if app_mode == vars.AppMode.DEFAULT.value:
+        tab_conversations, tab_config, tab_faq, tab_debug = st.tabs(["Conversations", "Config", "FAQ", "Debug"])
+    else:
+       tab_conversations, tab_docs, tab_config, tab_faq, tab_debug = st.tabs(["Conversations", "Documents", "Config", "FAQ", "Debug"])
 
 with tab_faq:
     with st.expander(label=f"¿Qué es {app_title}?", expanded=False):
@@ -53,8 +63,13 @@ with tab_faq:
 
     with st.expander(label="Como usarla?", expanded=False):
         st.write("Escribe tu pregunta, pulsa Intro y se generará la respuesta.")
-        st.write("En la pestaña `Config` veras algunas opciones técnicas que puedes modificar, como por ejemplo la fuente de informacion (`Index namespace`).")
-        st.write("En la pestaña `Debug` veras algunas trazas y variables internas que podrian ser util para reportar un problema.")
+        st.write("En la pestaña `Conversations` se guardarán las distintas conversaciones que tengas en la aplicación para que puedas continuarlas en el tiempo.")
+        st.write("En la pestaña `Config` verás algunas opciones técnicas que puedes modificar, como, por ejemplo, la fuente de información (`Index Namespace`).")
+        st.write("En la pestaña `Debug` verás algunas trazas y variables internas que podrían ser útiles para reportar un problema.")
+
+    with st.expander(label="Modo PDF", expanded=False):
+        st.write("En la pestaña de `Config` también verás que puedes cambiar el modo de la aplicación a PDF.")
+        st.write("En este modo, se te mostrará una nueva pestaña `Documents` en la que puedes subir tus propios documentos y hacer preguntas sobre uno o varios de ellos a la vez.")
 
     st.write("## Disclaimer")
     st.caption("""Esta aplicación genera las respuestas basandose en fragmentos de texto, extraidos de artículos académicos. \
@@ -95,6 +110,22 @@ namespace_options = sorted(list(index.describe_index_stats()["namespaces"].keys(
 tokens.check_counter_exist()
 app.create_memory()
 
+
+#
+# --- TAB 1: LOAD CONVERSATIONS ---
+#
+with tab_conversations:
+    st.button(":heavy_plus_sign: New Conversation", on_click=app.clear_history, use_container_width=True)
+    upper_box_convers = st.container()
+    if "delete_conversation_id" in st.session_state:
+        app.delete_conversation_confirmation_display(upper_box_convers)
+    elif "edit_conversation_id" in st.session_state:
+        app.edit_conversation_name_display(upper_box_convers)
+    else:
+        upper_box_convers.divider()
+    db.get_user_conversations(st.container())
+
+
 #
 # --- TAB 2: CONFIG ---
 #
@@ -104,14 +135,40 @@ with tab_config:
     query_deixis_resolution = st.checkbox("Enable Query Deixis Resolution (Beta)", value=vars.QUERY_DEIXIS_RESOLUTION,
                                           help="Internaly reformulate the user query to avoid ambiguity and ensure that the intended meaning is clear and independent of the conversation context", key="query_deixis_resolution")
 
-    focus_chain_on = st.checkbox("Enable Focus Chain (Beta)", value=vars.FOCUS_CHAIN, help="Focus chain helps the LLM by filtering the documents on metadata", key="focus")
 
-    temp_slider = st.slider('Temperature', value=0.0, min_value=0.0, max_value=1.0, key="temperature")
+    temp_slider = st.slider('Temperature', value=0.0, min_value=0.0, max_value=1.0, key="temperature",
+                            help="How creative do you want the AI to be. A value close to 0 will be more precise, while a value close to 1 will be more creative.")
 
     min_score = st.slider('Minimal score', 0.70, 0.90, 0.75)
 
-    namespace = app.get_namespace(namespace_options, vars.INDEX_NAMESPACE)
+    if st.session_state.app_mode == vars.AppMode.DEFAULT.value:
+        namespace_options.pop(namespace_options.index("uploaded-documents"))
+        namespace = app.get_namespace(namespace_options, vars.INDEX_NAMESPACE)
+    else:
+        namespace = app.get_namespace(namespace_options, "uploaded-documents", disabled = True)
 
+
+#
+# --- TAB 3: DOCUMENTS ---
+#
+if app_mode == vars.AppMode.DOCUMENTS.value:
+    with tab_docs:
+        upper_box_docs = st.container()
+        if "delete_document_id" in st.session_state:
+            app.delete_document_confirmation_display(upper_box_docs, index)
+        elif "edit_document_id" in st.session_state:
+            app.edit_document_title_display(upper_box_docs)
+        else:
+            with st.form(key="upload-pdf-form", clear_on_submit=True):
+                files = app.file_uploader()
+                progress_widget = st.empty()
+                submitted = st.form_submit_button("Upload documents", type="primary", use_container_width=True)
+
+            if submitted and files:
+                app.save_uploaded_docs(index, files, progress_widget)
+                progress_widget.container()
+
+        db.get_user_documents(st.container())
 
 #
 # --- MAIN ---
@@ -124,8 +181,8 @@ query = app.get_query()
 msg_box = st.empty()
 
 config = {
+    "app_mode": app_mode,
     "query_deixis_resolution": query_deixis_resolution,
-    "focus_chain_on": focus_chain_on,
     "temp_slider": temp_slider,
     "min_score": min_score,
     "namespace": namespace,
@@ -152,35 +209,26 @@ if query:
     db.save_conversation()
 
 
-    # Find a metadata filter, only apply to Confluence namespaces
-    if focus_chain_on and ("ddo" in namespace):
-        response  = chains.get_chat_response(index, config, history, True, query, widgets)
+    if app_mode == vars.AppMode.DEFAULT.value:
+        response = chains.get_chat_response(index, config, history, query, widgets=widgets)
 
-        if response["filter"] != None:
-            app.expander(tab=tab_debug, label="verify_focus", expanded=False, content=response["ai_feedback"])
-            if response["ai_feedback"] == "False":
-                # Fake Streaming...
-                for word in ["\n\n", "Voy", " ", "a", " ", "buscar", " ", "una", " ", "mejor", " ", "respuesta", "..."]:
-                    MyStreamingCallbackHandler.on_llm_new_token(word)
-                time.sleep(1)
+    elif app_mode == vars.AppMode.DOCUMENTS.value:
+        documents = db.get_selected_documents()
+        response = chains.get_chat_response(index, config, history, query, widgets=widgets, documents=documents)
 
-                response = chains.get_chat_response(index, config, history, False, query, widgets)
-    else:
-        response = chains.get_chat_response(index, config, history, False, query, widgets)
-
-    resp_AIMessage = response["response"]
     ai_feedback = response["ai_feedback"]
     try:
-        ai_feedback = bool(ai_feedback)
+        if ai_feedback != None:
+            ai_feedback = bool(ai_feedback)
     except:
         ai_feedback = False
-    app.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage)
     app.expander(tab=tab_debug, label="ai_feedback", expanded=False, content=ai_feedback)
 
-    st.session_state.memory.chat_memory.add_ai_message(resp_AIMessage)
-    # msg_box.markdown(resp_AIMessage)
-
+    resp_AIMessage = response["response"]
     db.save_interaction(query, resp_AIMessage, config, ai_feedback, response["chunks"], response["deixis_query"])
+
+    app.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage)
+    st.session_state.memory.chat_memory.add_ai_message(resp_AIMessage)
 
 if "total_cost" in st.session_state and st.session_state.total_cost != 0:
     # st.caption(f"Input tokens: {st.session_state.question_in_tokens}, Output tokens: {st.session_state.question_out_tokens}, Cost: ${st.session_state.question_cost:.2f}")
@@ -199,18 +247,3 @@ if "total_cost" in st.session_state and st.session_state.total_cost != 0:
 del st.session_state.question_in_tokens
 del st.session_state.question_out_tokens
 del st.session_state.question_cost
-
-
-#
-# --- LOAD CONVERSATIONS ---
-#
-with tab_conversations:
-    st.button(":heavy_plus_sign: New Conversation", on_click=app.clear_history, use_container_width=True)
-    upper_box = st.container()
-    if "delete_conversation_id" in st.session_state:
-        app.delete_confirmation_display(upper_box)
-    if "edit_conversation_id" in st.session_state:
-        app.edit_conversation_name_display(upper_box)
-    else:
-        upper_box.divider()
-    db.get_user_conversations(st.container())

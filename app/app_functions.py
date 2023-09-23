@@ -12,8 +12,10 @@ from typing import (
 )
 
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
+from langchain.document_loaders import PyMuPDFLoader
 import vars
 import sql_alchemy as db
+import app_langchain.indexing as indexing
 
 
 #
@@ -49,25 +51,63 @@ def expander(tab, label, expanded=False, content=""):
 
 
 def get_query():
-    question_input = st.chat_input(
+    return st.chat_input(
         placeholder="Escribe tu pregunta.",
         key="query",
         )
-    return question_input
 
 
-def get_namespace(namespace_options, namespace_selected):
-    namespace_input = st.selectbox(
+def get_app_mode(app_mode):
+    mode_options = [mode.value for mode in vars.AppMode]
+    return st.selectbox(
+        label="App Mode",
+        options=mode_options,
+        index=mode_options.index(app_mode),
+        key="app_mode", # Creates a st.session_state.app_mode
+        help=f"- __{vars.AppMode.DEFAULT.value}__: Default mode where you can ask questions about internally organized Acciona documentation within different 'Index Namespace'.\n\n- __{vars.AppMode.DOCUMENTS.value}:__ Mode in which you can upload your own documents, ask questions about them, obtain a summary, or compare them with each other."
+    )
+
+
+def get_namespace(namespace_options, namespace_selected, disabled = False):
+    return st.selectbox(
         label="Index Namespace",
         options=namespace_options,
         index=namespace_options.index(namespace_selected),
         key="namespace",
+        disabled=disabled,
     )
-    return namespace_input
+
+
+def file_uploader():
+    return st.file_uploader(
+        label="Upload your PDF",
+        type=['pdf'],
+        accept_multiple_files=True,
+        label_visibility="collapsed")
 
 
 #
-# --- SESSION STATE ---
+# --- PDF FUNCTIONS ---
+#
+def save_uploaded_docs(index, files, progress_widget):
+    if not(os.path.exists("../pdfs") and os.path.isdir("../pdfs")):
+        os.mkdir("../pdfs")
+    for file in files:
+        with open("../pdfs/"+file.name,"wb") as f:
+            f.write(file.getbuffer())
+            pages = PyMuPDFLoader("../pdfs/"+file.name).load()
+
+        os.remove("../pdfs/"+file.name)
+
+        document_id = str(uuid4())
+        chunks = indexing.chunk_pdf(pages, document_id)
+        indexing.embed_pdf_to_pinecone(index, chunks, progress_widget)
+
+        db.save_document(document_id, file.name, chunks[0]['title'])
+
+
+#
+# --- SESSION STATE HISTORY ---
 #
 def create_memory(recreate: bool = False):
     # Create a ConversationEntityMemory object if not already created
@@ -107,10 +147,13 @@ def get_last_k_history(k) -> List:
     """ Only returns the last K Human/Ai interactions, as List of Human/AI Messages
         suitable to add to the conversation
     """
-    history=st.session_state.memory.chat_memory.messages
+    history=st.session_state.memory.chat_memory.messages[1:]
     return history[-2*k:]
 
 
+#
+# --- CONVERSATIONS TAB FUNCTIONS ---
+#
 def user_conversations_display(user_conversations, container):
     with container:
         now = datetime.datetime.now()
@@ -146,7 +189,7 @@ def user_conversations_display(user_conversations, container):
             with cols[0]:
                 conversation_button(conver, button_type)
             with cols[1]:
-                edit_name_button(conver.id, conver.name)
+                edit_conversation_name_button(conver.id, conver.name)
             with cols[2]:
                 del_conversation_button(conver.id, conver.name)
 
@@ -166,14 +209,14 @@ def conversation_button(conversation, button_type):
     )
 
 
-def edit_name_button(conversation_id, conversation_name):
-    st.button(":pencil2:", key=str(uuid4()), on_click=confirm_edit_name, args=(conversation_id, conversation_name, ))
+def edit_conversation_name_button(conversation_id, conversation_name):
+    st.button(":pencil2:", key=str(uuid4()), on_click=confirm_edit_conversation_name, args=(conversation_id, conversation_name, ))
 
-def confirm_edit_name(conversation_id, conversation_name):
+def confirm_edit_conversation_name(conversation_id, conversation_name):
     st.session_state.edit_conversation_id = conversation_id
     st.session_state.edit_conversation_name = conversation_name
 
-def cancel_edit_name():
+def cancel_edit_conversation_name():
     del st.session_state.edit_conversation_id
     del st.session_state.edit_conversation_name
 
@@ -181,22 +224,91 @@ def edit_conversation_name_display(widget):
     widget.divider()
     new_conversation_name = widget.text_input(label="Enter the new name of the conversation:", placeholder=st.session_state.edit_conversation_name, key="conversation_name")
     cols = widget.columns((1,1))
-    cols[0].button(label="Submit", on_click=db.edit_conversation_name, args=(new_conversation_name,), type="primary", use_container_width=True)
-    cols[1].button(label="Cancel", on_click=cancel_edit_name, use_container_width=True)
+    cols[0].button(label="Submit", key=str(uuid4()), on_click=db.edit_conversation_name, args=(new_conversation_name,), type="primary", use_container_width=True)
+    cols[1].button(label="Cancel", key=str(uuid4()), on_click=cancel_edit_conversation_name, use_container_width=True)
     widget.divider()
 
 
 def del_conversation_button(conversation_id, conversation_name):
-    st.button(label=":wastebasket:", key=str(uuid4()), on_click=confirm_delete, args=(conversation_id, conversation_name, ))
+    st.button(label=":wastebasket:", key=str(uuid4()), on_click=confirm_delete_conversation, args=(conversation_id, conversation_name, ))
 
-def confirm_delete(conversation_id, conversation_name):
+def confirm_delete_conversation(conversation_id, conversation_name):
     st.session_state.delete_conversation_id = conversation_id
     st.session_state.delete_conversation_name = conversation_name
 
-def delete_confirmation_display(widget):
+def delete_conversation_confirmation_display(widget):
     widget.divider()
     widget.error('Are you sure you want to delete the conversation "'+ st.session_state.delete_conversation_name[:50] +'"?')
     cols = widget.columns((1,1))
-    cols[0].button(label="Yes, delete.", on_click=db.delete_conversation, args=(True, ), type="primary", use_container_width=True)
-    cols[1].button(label="No, cancel.", on_click=db.delete_conversation, args=(False, ), type="primary", use_container_width=True)
+    cols[0].button(label="Yes, delete.", key=str(uuid4()), on_click=db.delete_conversation, args=(True, ), type="primary", use_container_width=True)
+    cols[1].button(label="No, cancel.", key=str(uuid4()), on_click=db.delete_conversation, args=(False, ), type="primary", use_container_width=True)
+    widget.divider()
+
+
+#
+# --- DOCUMENTS TAB FUNCTIONS ---
+#
+def user_documents_display(user_documents, container):
+    with container:
+        if "selected_documents" not in st.session_state:
+            st.session_state.selected_documents = set()
+        for doc in user_documents:
+            if doc.selected:
+                st.session_state.selected_documents.add(doc.id)
+                button_type = "primary"
+            else:
+                button_type = "secondary"
+            cols = st.columns((10,5,5))
+            with cols[0]:
+                document_button(doc, button_type)
+            with cols[1]:
+                edit_document_title_button(doc.id, doc.title)
+            with cols[2]:
+                del_document_button(doc.id, doc.title)
+
+
+def document_button(doc, button_type):
+    st.button(
+        label=doc.title,
+        on_click=db.update_select_doc,
+        args=(doc.id, (doc.id not in st.session_state.selected_documents),),
+        key=str(uuid4()),
+        use_container_width=True,
+        type=button_type,
+    )
+
+
+def edit_document_title_button(doc_id, doc_title):
+    st.button(":pencil2:", key=str(uuid4()), on_click=confirm_edit_document_title, args=(doc_id, doc_title, ))
+
+def confirm_edit_document_title(doc_id, doc_title):
+    st.session_state.edit_document_id = doc_id
+    st.session_state.edit_document_title = doc_title
+
+def cancel_edit_document_title():
+    del st.session_state.edit_document_id
+    del st.session_state.edit_document_title
+
+def edit_document_title_display(widget):
+    widget.divider()
+    new_conversation_name = widget.text_input(label="Enter the new title of the document:", placeholder=st.session_state.edit_document_title, key="document_title")
+    cols = widget.columns((1,1))
+    cols[0].button(label="Submit", key=str(uuid4()), on_click=db.edit_document_title, args=(new_conversation_name,), type="primary", use_container_width=True)
+    cols[1].button(label="Cancel", key=str(uuid4()), on_click=cancel_edit_document_title, use_container_width=True)
+    widget.divider()
+
+
+def del_document_button(doc_id, doc_title):
+    st.button(label=":wastebasket:", key=str(uuid4()), on_click=confirm_delete_document, args=(doc_id, doc_title, ))
+
+def confirm_delete_document(doc_id, doc_title):
+    st.session_state.delete_document_id= doc_id
+    st.session_state.delete_document_title = doc_title
+
+def delete_document_confirmation_display(widget, index):
+    widget.divider()
+    widget.error('Are you sure you want to delete the document "'+ st.session_state.delete_document_title[:50] +'"?')
+    cols = widget.columns((1,1))
+    cols[0].button(label="Yes, delete.", key=str(uuid4()), on_click=db.delete_document, args=(index, True, ), type="primary", use_container_width=True)
+    cols[1].button(label="No, cancel.", key=str(uuid4()), on_click=db.delete_document, args=(index, False, ), type="primary", use_container_width=True)
     widget.divider()

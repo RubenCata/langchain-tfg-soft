@@ -79,3 +79,9 @@
         min-width: auto;
     }
 }
+
+
+/* Progress bar */
+.stProgress .st-bo {
+    background-color: #FF4B4B;
+}

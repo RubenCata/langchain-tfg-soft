@@ -46,6 +46,18 @@ class Interaction(Base):
     conversation = relationship("Conversation", back_populates="interactions")
 
 
+class Document(Base):
+    __tablename__ = "documents"
+
+    id = Column(String(36), primary_key=True)
+    username = Column(String(100))
+    filename = Column(UnicodeText)
+    title = Column(UnicodeText)
+    upload_date = Column(DateTime, default=datetime.now)
+    selected = Column(Boolean, default=True)
+    # shared = Column(ARRAY(String))
+
+
 #
 # --- SQL ALCHEMY FUNCTIONS ---
 #
@@ -175,12 +187,15 @@ def load_conversation(id):
             st.session_state.sql_conversation_id = id
             if "total_cost" in st.session_state:
                 st.session_state.total_cost = 0
+                st.session_state.total_in_tokens = 0
+                st.session_state.total_out_tokens = 0
             app.create_memory(recreate=True)
             st.session_state.memory.chat_memory.add_ai_message(f"Hola {vars.username}, ¿en qué puedo ayudarte?")
             for inter in interactions:
                 st.session_state.memory.chat_memory.add_user_message(inter.question)
                 st.session_state.memory.chat_memory.add_ai_message(inter.response)
                 st.session_state.total_cost += inter.cost
+                st.session_state.total_out_tokens += inter.tokens
 
 
 def edit_conversation_name(conversation_name):
@@ -209,9 +224,122 @@ def delete_conversation(bool):
                 session.commit()
             except:
                 session.rollback()
-                print("Could not delete conversation: ", st.session_state.edit_conversation_id)
+                print("Could not delete conversation: ", st.session_state.delete_conversation_id)
                 raise
             else:
                 app.clear_history()
     del st.session_state.delete_conversation_id
     del st.session_state.delete_conversation_name
+
+
+def save_document(id, filename, title):
+    with get_sql_session() as session:
+        session.begin()
+        sql_document = Document(
+            id=id,
+            username=vars.username,
+            filename=filename,
+            title=title,
+        )
+        try:
+            session.add(sql_document)
+            session.commit()
+        except:
+            session.rollback()
+            raise
+
+
+def get_user_documents(container):
+    with get_sql_session() as session:
+        try:
+            user_documents = session.query(Document).filter(Document.username == vars.username).order_by(Document.upload_date.desc()).all()
+        except:
+            session.rollback()
+            print("Could not load user documents: ", vars.username)
+            raise
+        else:
+            app.user_documents_display(user_documents, container)
+
+
+def get_selected_documents():
+    with get_sql_session() as session:
+        try:
+            selected_documents = session.query(Document).filter(
+                Document.username == vars.username,
+                Document.selected == True,
+                ).all()
+        except:
+            session.rollback()
+            print("Could not load selected documents: ", vars.username)
+            raise
+        else:
+            return [doc.id for doc in selected_documents]
+
+def get_document_title(document_id):
+    with get_sql_session() as session:
+        try:
+            sql_document = session.query(Document).filter(
+                Document.username == vars.username,
+                Document.id == document_id,
+                ).first()
+        except:
+            session.rollback()
+            print("Could not find document: ", document_id)
+            raise
+        else:
+            return sql_document.title
+
+def update_select_doc(doc_id, selected):
+    with get_sql_session() as session:
+        try:
+            sql_document = session.query(Document).filter_by(id=doc_id).first()
+            sql_document.selected = selected
+            session.add(sql_document)
+            session.commit()
+        except:
+            session.rollback()
+            print("Could not select document in database: ", doc_id)
+            raise
+        else:
+            if selected:
+                st.session_state.selected_documents.add(doc_id)
+            else:
+                st.session_state.selected_documents.discard(doc_id)
+
+def edit_document_title(document_name):
+    if document_name != "":
+        with get_sql_session() as session:
+            try:
+                sql_document = session.query(Document).filter_by(id=st.session_state.edit_document_id).first()
+                sql_document.title = document_name
+                session.add(sql_document)
+                session.commit()
+            except:
+                session.rollback()
+                print("Could not edit document's name: ", st.session_state.edit_document_id)
+                raise
+        del st.session_state.edit_document_id
+        del st.session_state.edit_document_title
+
+def delete_document(index, bool):
+    if bool:
+        with get_sql_session() as session:
+            try:
+                sql_document = session.query(Document).filter_by(id=st.session_state.delete_document_id).first()
+                session.delete(sql_document)
+                session.commit()
+            except:
+                session.rollback()
+                print("Could not delete conversation: ", st.session_state.delete_document_id)
+                raise
+            else:
+                index.delete(
+                    filter={
+                        # Solo puede eliminarlo en Pinecone el que lo subió inicialmente
+                        "username": {"$eq": vars.username},
+                        "document_id": {"$eq": st.session_state.delete_document_id}
+                    },
+                    namespace="uploaded-documents"
+                )
+    del st.session_state.delete_document_id
+    del st.session_state.delete_document_title
