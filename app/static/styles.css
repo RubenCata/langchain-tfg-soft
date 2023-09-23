@@ -44,8 +44,8 @@
 [data-testid="stSidebar"] .css-10oheav.eczjsme4 {
     padding-top: 1.5rem;
     padding-bottom: 1.5rem;
-    padding-right: 0.5rem;
-    padding-left: 0.5rem;
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
 }
 
 /* st.divider */
@@ -67,7 +67,7 @@
 
 
 /* Edit and delete conversation buttons. Be careful if moved this buttons from tab-panel */
-[data-testid="stSidebar"] [data-baseweb="tab-panel"] [data-testid="stHorizontalBlock"].css-ocqkz7.esravye3 {
+[data-testid="stSidebar"] [data-baseweb="tab-panel"] [data-testid="stHorizontalBlock"].css-ocqkz7 {
     gap: 0.5rem;
 }
 [data-testid="stSidebar"] [data-baseweb="tab-panel"] [data-testid="column"].css-12w0qpk {
@@ -87,4 +87,10 @@
 /* Progress bar */
 .stProgress .st-bo {
     background-color: #FF4B4B;
+}
+
+/* Expander */
+.streamlit-expanderContent {
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
 }
