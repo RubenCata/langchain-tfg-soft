@@ -18,30 +18,24 @@ import app_functions as app
 # --- AZURE CHAT MODEL ---
 #
 def get_chat_model(streaming=True, temperature=0.0, handler=None):
+    kwargs = {
+        "openai_api_base": os.environ["OPENAI_API_BASE"],
+        "openai_api_version": os.environ["OPENAI_API_VERSION"],
+        "deployment_name": os.environ["DEPLOYMENT_NAME"],
+        "openai_api_key": os.environ["OPENAI_API_KEY"],
+        "openai_api_type": os.environ["OPENAI_API_TYPE"],
+        "temperature": temperature,
+        "request_timeout": 6,
+        "verbose": True,
+    }
+
     if streaming:
-        return AzureChatOpenAI(
-            openai_api_base = os.environ["OPENAI_API_BASE"],
-            openai_api_version = os.environ["OPENAI_API_VERSION"],
-            deployment_name = os.environ["DEPLOYMENT_NAME"],
-            openai_api_key = os.environ["OPENAI_API_KEY"],
-            openai_api_type = os.environ["OPENAI_API_TYPE"],
-            temperature = temperature,
-            streaming=streaming,
-            callback_manager=BaseCallbackManager([handler]),
-            request_timeout=6,
-            verbose=True,
-        )
-    else:
-        return AzureChatOpenAI(
-            openai_api_base = os.environ["OPENAI_API_BASE"],
-            openai_api_version = os.environ["OPENAI_API_VERSION"],
-            deployment_name = os.environ["DEPLOYMENT_NAME"],
-            openai_api_key = os.environ["OPENAI_API_KEY"],
-            openai_api_type = os.environ["OPENAI_API_TYPE"],
-            temperature = temperature,
-            request_timeout=6,
-            verbose=True,
-        )
+        kwargs.update({
+            "streaming": True,
+            "callback_manager": BaseCallbackManager([handler]),
+        })
+
+    return AzureChatOpenAI(**kwargs)
 
 
 #

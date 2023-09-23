@@ -101,9 +101,12 @@ def save_uploaded_docs(index, files, progress_widget):
 
         document_id = str(uuid4())
         chunks = indexing.chunk_pdf(pages, document_id)
-        indexing.embed_pdf_to_pinecone(index, chunks, progress_widget)
-
-        db.save_document(document_id, file.name, chunks[0]['title'])
+        if len(chunks) > 0:
+            indexing.embed_pdf_to_pinecone(index, chunks, progress_widget)
+            db.save_document(document_id, file.name, chunks[0]['title'])
+            progress_widget.container()
+        else:
+            progress_widget.error('No text has been recognized in the uploaded document.')
 
 
 #
@@ -185,6 +188,11 @@ def user_conversations_display(user_conversations, container):
                 st.caption("Old")
                 old_caption = True
 
+            if "delete_conversation_id" in st.session_state and conver.id == st.session_state.delete_conversation_id:
+                delete_conversation_confirmation_display()
+            elif "edit_conversation_id" in st.session_state and conver.id == st.session_state.edit_conversation_id:
+                edit_conversation_name_display()
+
             cols = st.columns((10,5,5))
             with cols[0]:
                 conversation_button(conver, button_type)
@@ -215,18 +223,24 @@ def edit_conversation_name_button(conversation_id, conversation_name):
 def confirm_edit_conversation_name(conversation_id, conversation_name):
     st.session_state.edit_conversation_id = conversation_id
     st.session_state.edit_conversation_name = conversation_name
+    if "delete_conversation_id" and "delete_conversation_name" in st.session_state:
+        del st.session_state.delete_conversation_id
+        del st.session_state.delete_conversation_name
 
 def cancel_edit_conversation_name():
     del st.session_state.edit_conversation_id
     del st.session_state.edit_conversation_name
 
-def edit_conversation_name_display(widget):
-    widget.divider()
-    new_conversation_name = widget.text_input(label="Enter the new name of the conversation:", placeholder=st.session_state.edit_conversation_name, key="conversation_name")
-    cols = widget.columns((1,1))
-    cols[0].button(label="Submit", key=str(uuid4()), on_click=db.edit_conversation_name, args=(new_conversation_name,), type="primary", use_container_width=True)
-    cols[1].button(label="Cancel", key=str(uuid4()), on_click=cancel_edit_conversation_name, use_container_width=True)
-    widget.divider()
+def edit_conversation_name_display():
+    st.divider()
+    st.text_input(
+        label="Enter the new name of the conversation:",
+        value=st.session_state.edit_conversation_name,
+        key="conversation_name",
+        on_change=db.edit_conversation_name,
+    )
+    st.button(label="Cancel", key=str(uuid4()), on_click=cancel_edit_conversation_name, use_container_width=True)
+    st.divider()
 
 
 def del_conversation_button(conversation_id, conversation_name):
@@ -235,20 +249,23 @@ def del_conversation_button(conversation_id, conversation_name):
 def confirm_delete_conversation(conversation_id, conversation_name):
     st.session_state.delete_conversation_id = conversation_id
     st.session_state.delete_conversation_name = conversation_name
+    if "edit_conversation_id" and "edit_conversation_name" in st.session_state:
+        del st.session_state.edit_conversation_id
+        del st.session_state.edit_conversation_name
 
-def delete_conversation_confirmation_display(widget):
-    widget.divider()
-    widget.error('Are you sure you want to delete the conversation "'+ st.session_state.delete_conversation_name[:50] +'"?')
-    cols = widget.columns((1,1))
+def delete_conversation_confirmation_display():
+    st.divider()
+    st.error('Are you sure you want to delete the conversation "'+ st.session_state.delete_conversation_name[:50] +'"?')
+    cols = st.columns((1,1))
     cols[0].button(label="Yes, delete.", key=str(uuid4()), on_click=db.delete_conversation, args=(True, ), type="primary", use_container_width=True)
     cols[1].button(label="No, cancel.", key=str(uuid4()), on_click=db.delete_conversation, args=(False, ), type="primary", use_container_width=True)
-    widget.divider()
+    st.divider()
 
 
 #
 # --- DOCUMENTS TAB FUNCTIONS ---
 #
-def user_documents_display(user_documents, container):
+def user_documents_display(user_documents, index, container):
     with container:
         if "selected_documents" not in st.session_state:
             st.session_state.selected_documents = set()
@@ -258,6 +275,12 @@ def user_documents_display(user_documents, container):
                 button_type = "primary"
             else:
                 button_type = "secondary"
+
+            if "delete_document_id" in st.session_state and doc.id == st.session_state.delete_document_id:
+                delete_document_confirmation_display(index)
+            elif "edit_document_id" in st.session_state and doc.id == st.session_state.edit_document_id:
+                edit_document_title_display()
+
             cols = st.columns((10,5,5))
             with cols[0]:
                 document_button(doc, button_type)
@@ -284,18 +307,24 @@ def edit_document_title_button(doc_id, doc_title):
 def confirm_edit_document_title(doc_id, doc_title):
     st.session_state.edit_document_id = doc_id
     st.session_state.edit_document_title = doc_title
+    if "delete_document_id" and "delete_document_title" in st.session_state:
+        del st.session_state.delete_document_id
+        del st.session_state.delete_document_title
 
 def cancel_edit_document_title():
     del st.session_state.edit_document_id
     del st.session_state.edit_document_title
 
-def edit_document_title_display(widget):
-    widget.divider()
-    new_conversation_name = widget.text_input(label="Enter the new title of the document:", placeholder=st.session_state.edit_document_title, key="document_title")
-    cols = widget.columns((1,1))
-    cols[0].button(label="Submit", key=str(uuid4()), on_click=db.edit_document_title, args=(new_conversation_name,), type="primary", use_container_width=True)
-    cols[1].button(label="Cancel", key=str(uuid4()), on_click=cancel_edit_document_title, use_container_width=True)
-    widget.divider()
+def edit_document_title_display():
+    st.divider()
+    st.text_input(
+        label="Enter the new title of the document:",
+        value=st.session_state.edit_document_title,
+        key="document_title",
+        on_change=db.edit_document_title,
+    )
+    st.button(label="Cancel", key=str(uuid4()), on_click=cancel_edit_document_title, use_container_width=True)
+    st.divider()
 
 
 def del_document_button(doc_id, doc_title):
@@ -304,11 +333,14 @@ def del_document_button(doc_id, doc_title):
 def confirm_delete_document(doc_id, doc_title):
     st.session_state.delete_document_id= doc_id
     st.session_state.delete_document_title = doc_title
+    if "edit_document_id" and "edit_document_title" in st.session_state:
+        del st.session_state.edit_document_id
+        del st.session_state.edit_document_title
 
-def delete_document_confirmation_display(widget, index):
-    widget.divider()
-    widget.error('Are you sure you want to delete the document "'+ st.session_state.delete_document_title[:50] +'"?')
-    cols = widget.columns((1,1))
+def delete_document_confirmation_display(index):
+    st.divider()
+    st.error('Are you sure you want to delete the document "'+ st.session_state.delete_document_title[:50] +'"?')
+    cols = st.columns((1,1))
     cols[0].button(label="Yes, delete.", key=str(uuid4()), on_click=db.delete_document, args=(index, True, ), type="primary", use_container_width=True)
     cols[1].button(label="No, cancel.", key=str(uuid4()), on_click=db.delete_document, args=(index, False, ), type="primary", use_container_width=True)
-    widget.divider()
+    st.divider()

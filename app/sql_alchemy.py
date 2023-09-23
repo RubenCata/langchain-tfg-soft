@@ -196,10 +196,12 @@ def load_conversation(id):
                 st.session_state.memory.chat_memory.add_ai_message(inter.response)
                 st.session_state.total_cost += inter.cost
                 st.session_state.total_out_tokens += inter.tokens
+                st.session_state.sql_interaction_id = interactions[len(interactions)-1].id
 
 
-def edit_conversation_name(conversation_name):
-    if conversation_name != "":
+def edit_conversation_name():
+    conversation_name = st.session_state.conversation_name
+    if conversation_name != "" and "edit_conversation_id" in st.session_state:
         with get_sql_session() as session:
                 try:
                     sql_conversation = session.query(Conversation).filter_by(id=st.session_state.edit_conversation_id).first()
@@ -249,7 +251,7 @@ def save_document(id, filename, title):
             raise
 
 
-def get_user_documents(container):
+def get_user_documents(index, container):
     with get_sql_session() as session:
         try:
             user_documents = session.query(Document).filter(Document.username == vars.username).order_by(Document.upload_date.desc()).all()
@@ -258,7 +260,7 @@ def get_user_documents(container):
             print("Could not load user documents: ", vars.username)
             raise
         else:
-            app.user_documents_display(user_documents, container)
+            app.user_documents_display(user_documents, index, container)
 
 
 def get_selected_documents():
@@ -306,8 +308,9 @@ def update_select_doc(doc_id, selected):
             else:
                 st.session_state.selected_documents.discard(doc_id)
 
-def edit_document_title(document_name):
-    if document_name != "":
+def edit_document_title():
+    document_name = st.session_state.document_title
+    if document_name != "" and "edit_document_id" in st.session_state:
         with get_sql_session() as session:
             try:
                 sql_document = session.query(Document).filter_by(id=st.session_state.edit_document_id).first()

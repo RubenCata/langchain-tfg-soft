@@ -41,8 +41,11 @@
 [data-testid="stSidebar"] .block-container {
     padding-top: 1.5rem;
 }
-[data-testid="stSidebar"] .css-1544g2n.e1akgbir4  {
-    padding-top: 2rem;
+[data-testid="stSidebar"] .css-10oheav.eczjsme4 {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
 }
 
 /* st.divider */

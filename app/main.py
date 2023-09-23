@@ -67,8 +67,8 @@ with tab_faq:
         st.write("En la pestaña `Config` verás algunas opciones técnicas que puedes modificar, como, por ejemplo, la fuente de información (`Index Namespace`).")
         st.write("En la pestaña `Debug` verás algunas trazas y variables internas que podrían ser útiles para reportar un problema.")
 
-    with st.expander(label="Modo PDF", expanded=False):
-        st.write("En la pestaña de `Config` también verás que puedes cambiar el modo de la aplicación a PDF.")
+    with st.expander(label=f"Modo {vars.AppMode.DOCUMENTS.value}", expanded=False):
+        st.write(f'En la pestaña de `Config` también verás que puedes cambiar el modo de la aplicación a "{vars.AppMode.DOCUMENTS.value}".')
         st.write("En este modo, se te mostrará una nueva pestaña `Documents` en la que puedes subir tus propios documentos y hacer preguntas sobre uno o varios de ellos a la vez.")
 
     st.write("## Disclaimer")
@@ -104,7 +104,9 @@ index = get_pinecone_index()
 namespace_options = sorted(list(index.describe_index_stats()["namespaces"].keys()))
 
 
+
 # ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 
 
 tokens.check_counter_exist()
@@ -112,22 +114,16 @@ app.create_memory()
 
 
 #
-# --- TAB 1: LOAD CONVERSATIONS ---
+# --- TAB CONVERSATIONS ---
 #
 with tab_conversations:
     st.button(":heavy_plus_sign: New Conversation", on_click=app.clear_history, use_container_width=True)
-    upper_box_convers = st.container()
-    if "delete_conversation_id" in st.session_state:
-        app.delete_conversation_confirmation_display(upper_box_convers)
-    elif "edit_conversation_id" in st.session_state:
-        app.edit_conversation_name_display(upper_box_convers)
-    else:
-        upper_box_convers.divider()
+    st.divider()
     db.get_user_conversations(st.container())
 
 
 #
-# --- TAB 2: CONFIG ---
+# --- TAB CONFIG ---
 #
 with tab_config:
     slow_down = st.checkbox("Force streaming slowdown", value=True, help="Slowing down streaming of response. Enable for a ChatGPT-like user experience", key="slowdown")
@@ -149,26 +145,21 @@ with tab_config:
 
 
 #
-# --- TAB 3: DOCUMENTS ---
+# --- TAB DOCUMENTS ---
 #
 if app_mode == vars.AppMode.DOCUMENTS.value:
     with tab_docs:
-        upper_box_docs = st.container()
-        if "delete_document_id" in st.session_state:
-            app.delete_document_confirmation_display(upper_box_docs, index)
-        elif "edit_document_id" in st.session_state:
-            app.edit_document_title_display(upper_box_docs)
-        else:
+        with tab_docs.expander(label="Upload Document", expanded=False):
             with st.form(key="upload-pdf-form", clear_on_submit=True):
                 files = app.file_uploader()
                 progress_widget = st.empty()
-                submitted = st.form_submit_button("Upload documents", type="primary", use_container_width=True)
+                submitted = st.form_submit_button("Upload Documents", type="primary", use_container_width=True)
 
             if submitted and files:
                 app.save_uploaded_docs(index, files, progress_widget)
-                progress_widget.container()
 
-        db.get_user_documents(st.container())
+        with tab_docs.expander(label="Select Documents", expanded=True):
+            db.get_user_documents(index, st.container())
 
 #
 # --- MAIN ---
@@ -234,7 +225,7 @@ if "total_cost" in st.session_state and st.session_state.total_cost != 0:
     # st.caption(f"Input tokens: {st.session_state.question_in_tokens}, Output tokens: {st.session_state.question_out_tokens}, Cost: ${st.session_state.question_cost:.2f}")
     # st.caption(f"Total input tokens: {st.session_state.total_in_tokens}, Total output tokens: {st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
 
-    cols = st.columns((10,5,5))
+    cols = st.container().columns((10,5,5))
     # cols[0].caption(f"Total tokens: {st.session_state.total_in_tokens + st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
     cols[0].caption(f"Total cost: ${st.session_state.total_cost:.2f}")
     good_feedback = cols[1].button(label=":+1:", use_container_width=True)
