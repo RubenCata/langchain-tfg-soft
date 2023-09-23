@@ -12,6 +12,19 @@ import app_langchain.tokens as tokens
 embeddings = OpenAIEmbeddings(model=vars.EMBEDDING_MODEL)
 
 
+def inicialize_doc_namespace(index, namespace):
+    metadata = {
+            'document_md5': "0",
+            'filename': "Init_doc",
+            'title': "Init_doc",
+            'text': " ",
+            'page': 1,
+            'total_pages': 1,
+            'chunk': "0",
+        }
+    index.upsert(vectors=[{'id':str(uuid4()), 'values':embeddings.embed_query(" "), 'metadata':metadata}], namespace=namespace)
+
+
 def get_text_splitter():
     return RecursiveCharacterTextSplitter(
         chunk_size = 650,
@@ -21,7 +34,7 @@ def get_text_splitter():
     )
 
 
-def chunk_pdf(pages, document_id):
+def chunk_pdf(pages, document_md5):
     chunks = []
     chunk_count = 0
     text_splitter = get_text_splitter()
@@ -42,7 +55,7 @@ def chunk_pdf(pages, document_id):
         for chunkText in enumerate(pageSplitted):
             chunks.append({
                 'id': str(uuid4()),
-                'document_id': document_id,
+                'document_md5': document_md5,
                 'filename': filename,
                 'title': title,
                 'text': chunkText[1],
@@ -92,7 +105,7 @@ def embed_pdf_to_pinecone(index, chunks, progress_widget):
 
         # update the meta
         meta_batch = [{
-            'document_id': x['document_id'],
+            'document_md5': x['document_md5'],
             'filename': x['filename'],
             'title': x['title'],
             'text': x['text'],

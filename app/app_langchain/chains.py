@@ -104,7 +104,7 @@ class ChunkRetrieval(TransformChain):
             inputs.pop("filter")
         elif self.app_mode == vars.AppMode.DOCUMENTS.value:
             filter={
-                "document_id": {"$in": self.documents}
+                "document_md5": {"$in": self.documents}
             }
         else:
             filter = None
@@ -177,7 +177,7 @@ class ChunkFormatter(TransformChain):
         # Return a array [] of dicts {"chunk": chunk} needed for the example selector
         if app_mode == vars.AppMode.DOCUMENTS.value:
             formatted_chunks = [
-                f"Fuente: {db.get_document_title(item['metadata']['document_id'])}, Página {int(item['metadata']['page'])} de {int(item['metadata']['total_pages'])}"
+                f"Fuente: {db.get_document_title(item['metadata']['document_md5'])}, Página {int(item['metadata']['page'])} de {int(item['metadata']['total_pages'])}"
                 f"\n\n"
                 f"Relevancia: {100*item['score']:.2f}%"
                 f"\n\n"

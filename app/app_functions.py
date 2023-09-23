@@ -2,6 +2,7 @@ import os
 from uuid import uuid4
 import re
 import datetime
+import hashlib
 from urllib.parse import urlparse
 import streamlit as st
 from typing import (
@@ -94,16 +95,20 @@ def save_uploaded_docs(index, files, progress_widget):
         os.mkdir("../pdfs")
     for file in files:
         with open("../pdfs/"+file.name,"wb") as f:
-            f.write(file.getbuffer())
+            data = file.getbuffer()
+            f.write(data)
             pages = PyMuPDFLoader("../pdfs/"+file.name).load()
+            md5 = hashlib.md5(data).hexdigest()
 
         os.remove("../pdfs/"+file.name)
+        save = False
 
         document_id = str(uuid4())
-        chunks = indexing.chunk_pdf(pages, document_id)
+        chunks = indexing.chunk_pdf(pages, document_md5=md5)
         if len(chunks) > 0:
-            indexing.embed_pdf_to_pinecone(index, chunks, progress_widget)
-            db.save_document(document_id, file.name, chunks[0]['title'])
+            if not db.exists_document_md5(md5):
+                indexing.embed_pdf_to_pinecone(index, chunks, progress_widget)
+            db.save_document(document_id, file.name, chunks[0]['title'], md5)
             progress_widget.container()
         else:
             progress_widget.error('No text has been recognized in the uploaded document.')

@@ -53,7 +53,7 @@ class Document(Base):
     title = Column(UnicodeText)
     upload_date = Column(DateTime, default=datetime.now)
     selected = Column(Boolean, default=True)
-    # shared = Column(ARRAY(String))
+    md5 = Column(String(32))
 
 
 #
@@ -230,13 +230,25 @@ def delete_conversation(bool):
     del st.session_state.delete_conversation_name
 
 
-def save_document(id, filename, title):
+def exists_document_md5(md5):
+    with get_sql_session() as session:
+        try:
+            document = session.query(Document).filter(Document.md5 == md5).first()
+        except:
+            session.rollback()
+            print("Could not check if exists a document with MD5: ", md5)
+            raise
+    return document is not None
+
+
+def save_document(id, filename, title, md5):
     with get_sql_session() as session:
         session.begin()
         sql_document = Document(
             id=id,
             filename=filename,
             title=title,
+            md5=md5,
         )
         try:
             session.add(sql_document)
@@ -269,17 +281,17 @@ def get_selected_documents():
             print("Could not load selected documents")
             raise
         else:
-            return [doc.id for doc in selected_documents]
+            return [doc.md5 for doc in selected_documents]
 
-def get_document_title(document_id):
+def get_document_title(document_md5):
     with get_sql_session() as session:
         try:
             sql_document = session.query(Document).filter(
-                Document.id == document_id,
+                Document.md5 == document_md5,
                 ).first()
         except:
             session.rollback()
-            print("Could not find document: ", document_id)
+            print("Could not find document: ", document_md5)
             raise
         else:
             return sql_document.title
@@ -322,6 +334,7 @@ def delete_document(index, bool):
         with get_sql_session() as session:
             try:
                 sql_document = session.query(Document).filter_by(id=st.session_state.delete_document_id).first()
+                md5_documents = session.query(Document).filter_by(md5=sql_document.md5).count()
                 session.delete(sql_document)
                 session.commit()
             except:
@@ -329,11 +342,12 @@ def delete_document(index, bool):
                 print("Could not delete conversation: ", st.session_state.delete_document_id)
                 raise
             else:
-                index.delete(
-                    filter={
-                        "document_id": {"$eq": st.session_state.delete_document_id}
-                    },
-                    namespace="uploaded-documents"
-                )
+                if md5_documents == 1:
+                    index.delete(
+                        filter={
+                            "document_md5": {"$eq": sql_document.md5}
+                        },
+                        namespace="uploaded-documents"
+                    )
     del st.session_state.delete_document_id
     del st.session_state.delete_document_title

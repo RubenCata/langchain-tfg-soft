@@ -15,6 +15,7 @@ import app_functions as app
 import app_langchain.models as models
 import app_langchain.chains as chains
 import app_langchain.tokens as tokens
+import app_langchain.indexing as indexing
 
 
 
@@ -141,6 +142,10 @@ with tab_config:
         namespace_options.pop(namespace_options.index("uploaded-documents"))
         namespace = app.get_namespace(namespace_options, vars.INDEX_NAMESPACE)
     else:
+        if "uploaded-documents" not in namespace_options:
+            indexing.inicialize_doc_namespace(index, "uploaded-documents")
+            index = get_pinecone_index()
+            namespace_options.append("uploaded-documents")
         namespace = app.get_namespace(namespace_options, "uploaded-documents", disabled = True)
 
 
