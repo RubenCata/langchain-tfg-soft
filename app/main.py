@@ -154,7 +154,7 @@ with tab_config:
 #
 if app_mode == vars.AppMode.DOCUMENTS.value:
     with tab_docs:
-        with tab_docs.expander(label="Upload Document", expanded=False):
+        with tab_docs.expander(label="Upload Documents", expanded=False):
             with st.form(key="upload-pdf-form", clear_on_submit=True):
                 files = app.file_uploader()
                 progress_widget = st.empty()
@@ -163,8 +163,7 @@ if app_mode == vars.AppMode.DOCUMENTS.value:
             if submitted and files:
                 app.save_uploaded_docs(index, files, progress_widget)
 
-        with tab_docs.expander(label="Select Documents", expanded=True):
-            db.get_documents(index, st.container())
+        app.documents_display(index, namespace)
 
 #
 # --- MAIN ---

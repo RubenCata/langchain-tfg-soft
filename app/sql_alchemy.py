@@ -258,7 +258,7 @@ def save_document(id, filename, title, md5):
             raise
 
 
-def get_documents(index, container):
+def get_documents():
     with get_sql_session() as session:
         try:
             documents = session.query(Document).order_by(Document.upload_date.desc()).all()
@@ -267,7 +267,7 @@ def get_documents(index, container):
             print("Could not load documents")
             raise
         else:
-            app.documents_display(documents, index, container)
+            return documents
 
 
 def get_selected_documents():

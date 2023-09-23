@@ -13,7 +13,7 @@ from typing import (
 )
 
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-from langchain.document_loaders import PyMuPDFLoader
+from langchain.document_loaders import PyMuPDFLoader, UnstructuredFileLoader
 import vars
 import sql_alchemy as db
 import app_langchain.indexing as indexing
@@ -81,8 +81,8 @@ def get_namespace(namespace_options, namespace_selected, disabled = False):
 
 def file_uploader():
     return st.file_uploader(
-        label="Upload your PDF",
-        type=['pdf'],
+        label="Upload your document",
+        type=['pdf', 'ppt', 'pptx', 'doc', 'docx', 'txt'],
         accept_multiple_files=True,
         label_visibility="collapsed")
 
@@ -90,28 +90,35 @@ def file_uploader():
 #
 # --- PDF FUNCTIONS ---
 #
-def save_uploaded_docs(index, files, progress_widget):
-    if not(os.path.exists("../pdfs") and os.path.isdir("../pdfs")):
-        os.mkdir("../pdfs")
-    for file in files:
-        with open("../pdfs/"+file.name,"wb") as f:
-            data = file.getbuffer()
-            f.write(data)
-            pages = PyMuPDFLoader("../pdfs/"+file.name).load()
-            md5 = hashlib.md5(data).hexdigest()
+def save_uploaded_docs(index, namespace, files, progress_widget):
+    path = "../documents"
+    if not(os.path.exists(path) and os.path.isdir(path)):
+        os.mkdir(path)
 
-        os.remove("../pdfs/"+file.name)
-        save = False
+    for file in files:
+        data = file.getbuffer()
+        with open(path + "/" + file.name,"wb") as f:
+            f.write(data)
+
+        md5 = hashlib.md5(data).hexdigest()
+        file_extension = os.path.splitext(file.name)[1]
+        if file_extension == ".pdf":
+            pages = PyMuPDFLoader(path + "/" + file.name).load()
+        else:
+            pages = UnstructuredFileLoader(path + "/" + file.name, mode="paged", strategy="fast").load()
+
+        os.remove(path + "/" + file.name)
 
         document_id = str(uuid4())
-        chunks = indexing.chunk_pdf(pages, document_md5=md5)
-        if len(chunks) > 0:
-            if not db.exists_document_md5(md5):
-                indexing.embed_pdf_to_pinecone(index, chunks, progress_widget)
+        chunks = indexing.chunk_doc(pages, file_extension, document_md5=md5)
+        if not db.exists_document_md5(md5) and len(chunks) > 0:
+            indexing.embed_doc_to_pinecone(index, namespace, chunks, progress_widget)
             db.save_document(document_id, file.name, chunks[0]['title'], md5)
             progress_widget.container()
-        else:
+        elif len(chunks) <= 0:
             progress_widget.error('No text has been recognized in the uploaded document.')
+        else:
+            progress_widget.error(f'The document "{file.name}" is already uploaded under the title of "{db.get_document_title(md5)}"')
 
 
 #
@@ -270,16 +277,21 @@ def delete_conversation_confirmation_display():
 #
 # --- DOCUMENTS TAB FUNCTIONS ---
 #
-def documents_display(documents, index, container):
-    with container:
+def documents_display(index):
+
+    documents = db.get_documents()
+    selected = sum(list(map(lambda doc: doc.selected, documents)))
+    if selected > 0:
+        label = f"{selected} Document{ 's' if selected > 1 else ''} Selected"
+    else:
+        label = f"Select Documents"
+
+    with st.expander(label=label, expanded=True):
         if "selected_documents" not in st.session_state:
             st.session_state.selected_documents = set()
         for doc in documents:
             if doc.selected:
                 st.session_state.selected_documents.add(doc.id)
-                button_type = "primary"
-            else:
-                button_type = "secondary"
 
             if "delete_document_id" in st.session_state and doc.id == st.session_state.delete_document_id:
                 delete_document_confirmation_display(index)
@@ -288,21 +300,21 @@ def documents_display(documents, index, container):
 
             cols = st.columns((10,5,5))
             with cols[0]:
-                document_button(doc, button_type)
+                document_button(doc)
             with cols[1]:
                 edit_document_title_button(doc.id, doc.title)
             with cols[2]:
                 del_document_button(doc.id, doc.title)
 
 
-def document_button(doc, button_type):
+def document_button(doc):
     st.button(
         label=doc.title,
         on_click=db.update_select_doc,
         args=(doc.id, (doc.id not in st.session_state.selected_documents),),
         key=str(uuid4()),
         use_container_width=True,
-        type=button_type,
+        type="primary" if doc.selected else "secondary",
     )
 
 

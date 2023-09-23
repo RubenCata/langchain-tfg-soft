@@ -177,7 +177,7 @@ class ChunkFormatter(TransformChain):
         # Return a array [] of dicts {"chunk": chunk} needed for the example selector
         if app_mode == vars.AppMode.DOCUMENTS.value:
             formatted_chunks = [
-                f"Fuente: {db.get_document_title(item['metadata']['document_md5'])}, Página {int(item['metadata']['page'])} de {int(item['metadata']['total_pages'])}"
+                f"Fuente: {db.get_document_title(item['metadata']['document_md5'])}, Página {int(item['metadata']['page'])}"
                 f"\n\n"
                 f"Relevancia: {100*item['score']:.2f}%"
                 f"\n\n"
@@ -241,7 +241,7 @@ def get_chat_system_template(app_mode)  -> SystemMessagePromptTemplate:
     if app_mode == vars.AppMode.DEFAULT.value:
         source_format = '"[Título](URL)"'
     else:
-        source_format = '"Título, Página X de Y"'
+        source_format = '"Título, Página X"'
 
     system_template = """Te llamas """+vars.AI_NAME+""". Tienes muchos años de experiencia en Deep Learning.
         Tu tarea es responder con datos relevantes sobre el tema indicado por el usuario basandote en tus conocimientos.
@@ -256,7 +256,7 @@ def get_chat_system_template(app_mode)  -> SystemMessagePromptTemplate:
         - Si no puedes encontrar la respuesta en lo que conoces, responde honestamente "No lo sé", haciendo un resumen rápido de la información y pidiéndole al usuario que reescriba su consulta.
         - Responde en español.
         - Responde en formato bullet list o tabla cuando aplique.
-        - Al final de tu respuesta, escribe la lista de Fuentes """+ source_format + """de los fragmentos que utilizaste para tu respuesta.
+        - Al final de tu respuesta, escribe la lista de Fuentes """+ source_format + """ de los fragmentos que utilizaste para tu respuesta.
         """
 
     # Randomly address the user by its name
