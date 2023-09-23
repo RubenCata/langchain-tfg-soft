@@ -90,7 +90,7 @@ def file_uploader():
 #
 # --- PDF FUNCTIONS ---
 #
-def save_uploaded_docs(index, namespace, files, progress_widget):
+def save_uploaded_docs(index, files, progress_widget):
     path = "../documents"
     if not(os.path.exists(path) and os.path.isdir(path)):
         os.mkdir(path)
@@ -112,7 +112,7 @@ def save_uploaded_docs(index, namespace, files, progress_widget):
         document_id = str(uuid4())
         chunks = indexing.chunk_doc(pages, file_extension, document_md5=md5)
         if not db.exists_document_md5(md5) and len(chunks) > 0:
-            indexing.embed_doc_to_pinecone(index, namespace, chunks, progress_widget)
+            indexing.embed_doc_to_pinecone(index, chunks, progress_widget)
             db.save_document(document_id, file.name, chunks[0]['title'], md5)
             progress_widget.container()
         elif len(chunks) <= 0:

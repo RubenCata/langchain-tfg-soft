@@ -139,7 +139,8 @@ with tab_config:
     min_score = st.slider('Minimal score', 0.70, 0.90, 0.75)
 
     if st.session_state.app_mode == vars.AppMode.DEFAULT.value:
-        namespace_options.pop(namespace_options.index("uploaded-documents"))
+        for docs_namespace in [s for s in namespace_options if 'documents' in s]:
+            namespace_options.pop(namespace_options.index(docs_namespace))
         namespace = app.get_namespace(namespace_options, vars.INDEX_NAMESPACE)
     else:
         if "uploaded-documents" not in namespace_options:
@@ -163,7 +164,7 @@ if app_mode == vars.AppMode.DOCUMENTS.value:
             if submitted and files:
                 app.save_uploaded_docs(index, files, progress_widget)
 
-        app.documents_display(index, namespace)
+        app.documents_display(index)
 
 #
 # --- MAIN ---

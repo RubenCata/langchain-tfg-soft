@@ -117,7 +117,6 @@ def embed_doc_to_pinecone(index, chunks, progress_widget):
             'title': x['title'],
             'text': x['text'],
             'page': x['page'],
-            'total_pages': x['total_pages'],
             'chunk': x['chunk'],
         } for x in meta]
 

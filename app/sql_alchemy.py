@@ -97,15 +97,7 @@ def save_interaction(query, response, config, ai_feedback, chunks, deixis_query)
         chunks_list = []
         for chunk in chunks:
             chunks_list.append({
-                "metadata": {
-                    'entry_id': chunk["metadata"]['entry_id'],
-                    'title': chunk["metadata"]['title'],
-                    'authors': chunk["metadata"]['authors'],
-                    'primary_category': chunk["metadata"]['primary_category'],
-                    'categories': chunk["metadata"]['categories'],
-                    'links': chunk["metadata"]['links'],
-                    'text': chunk["metadata"]['text'],
-                    },
+                "metadata": chunk["metadata"],
                 "score": chunk["score"],
             })
 
