@@ -1,12 +1,7 @@
 from enum import Enum
 import os
-import requests
-import base64
-import json
 import yaml
-import streamlit as st
-from streamlit.web.server.websocket_headers import _get_websocket_headers
-
+from streamlit import cache_resource
 
 
 #
@@ -45,3 +40,23 @@ MEMORY_K = 5
 class AppMode(Enum):
     DEFAULT = "Default"
     DOCUMENTS = "Documents"
+
+
+#
+# --- CONNECT TO PINECONE ---
+#
+@cache_resource
+def get_pinecone_index():
+    import pinecone
+    pinecone.init(
+        api_key=os.environ["PINECONE_API_KEY"],
+        environment=os.environ["PINECONE_ENVIRONMENT"],
+    )
+    return pinecone.Index(INDEX_NAME)
+
+# connect to index
+def connect_to_pinecone():
+    global index
+    global namespace_options
+    index = get_pinecone_index()
+    namespace_options = sorted(list(index.describe_index_stats()["namespaces"].keys()))

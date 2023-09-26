@@ -5,13 +5,14 @@ from sqlalchemy.orm import (
     relationship,
     Session,
 )
+from langchain.chains.conversation.memory import ConversationBufferWindowMemory
+
 import streamlit as st
-import vars
 import os
 from uuid import uuid4
 
-import app_functions as app
-import app_langchain.chains as chains
+import vars
+
 
 #
 # --- SQL ALCHEMY ORM BUILD ---
@@ -57,6 +58,29 @@ class Document(Base):
 
 
 #
+# --- SESSION STATE MEMORY ---
+#
+def create_memory(recreate: bool = False):
+    # Create a ConversationEntityMemory object if not already created
+    if 'memory' not in st.session_state or recreate:
+        st.session_state.memory = ConversationBufferWindowMemory(
+            memory_key="history",
+            k=vars.MEMORY_K,
+            ai_prefix=vars.AI_NAME,
+            human_prefix=vars.username,
+            # return_messages=True,
+        )
+
+def clear_history():
+    if len(st.session_state.memory.chat_memory.messages) > 1:
+        del st.session_state.memory
+        del st.session_state.sql_conversation_id
+        st.session_state.total_in_tokens = 0
+        st.session_state.total_out_tokens = 0
+        st.session_state.total_cost = 0
+
+
+#
 # --- SQL ALCHEMY FUNCTIONS ---
 #
 def create_database():
@@ -72,53 +96,53 @@ def get_sql_session():
     return Session(engine)
 
 
-def save_conversation():
-    if 'sql_conversation_id' not in st.session_state:
-        with get_sql_session() as session:
-            session.begin()
-            sql_conversation = Conversation(
-                id=str(uuid4()),
-                active=True,
-            )
-            try:
-                session.add(sql_conversation)
-                session.commit()
-            except:
-                session.rollback()
-                raise
-            else:
-                st.session_state.sql_conversation_id = sql_conversation.id
+def create_conversation():
+    with get_sql_session() as session:
+        session.begin()
+        sql_conversation = Conversation(
+            id=str(uuid4()),
+            active=True,
+        )
+        try:
+            session.add(sql_conversation)
+            session.commit()
+        except:
+            session.rollback()
+            raise
+        else:
+            st.session_state.sql_conversation_id = sql_conversation.id
 
 
-def save_interaction(query, response, config, ai_feedback, chunks, deixis_query):
+def save_interaction(conver_name, query, response, config, ai_feedback, chunks, deixis_query):
     with get_sql_session() as session:
         session.begin()
 
         chunks_list = []
         for chunk in chunks:
+            if "published" in chunk["metadata"]:
+                chunk["metadata"].pop("published")
             chunks_list.append({
                 "metadata": chunk["metadata"],
                 "score": chunk["score"],
             })
 
-        interaction = Interaction(
-                id=str(uuid4()),
-                question=query,
-                response=response,
-                config=config,
-                tokens=st.session_state.question_in_tokens + st.session_state.question_out_tokens,
-                cost=st.session_state.question_cost,
-                ai_feedback=ai_feedback,
-                deixis_query=deixis_query,
-                chunks={"chunks": chunks_list},
-            )
-        st.session_state.sql_interaction_id = interaction.id
         try:
             sql_conversation = session.query(Conversation).filter_by(id=st.session_state.sql_conversation_id).first()
+            sql_conversation.name = conver_name
 
-            if sql_conversation.name == None:
-                conversation_name = chains.naming_chain(query, response).content
-                sql_conversation.name = conversation_name
+            interaction = Interaction(
+                    id=str(uuid4()),
+                    question=query,
+                    response=response,
+                    config=config,
+                    tokens=st.session_state.question_in_tokens + st.session_state.question_out_tokens,
+                    cost=st.session_state.question_cost,
+                    ai_feedback=ai_feedback,
+                    deixis_query=deixis_query,
+                    chunks={"chunks": chunks_list},
+                )
+
+            st.session_state.sql_interaction_id = interaction.id
 
             sql_conversation.interactions.append(interaction)
             session.add(sql_conversation)
@@ -126,6 +150,7 @@ def save_interaction(query, response, config, ai_feedback, chunks, deixis_query)
         except:
             session.rollback()
             print("Interaccion NO GUARDADA", interaction.id)
+            st.warning({"chunks": chunks_list})
             raise
 
 
@@ -143,7 +168,7 @@ def save_feedback(feedback: bool):
             raise
 
 
-def get_conversations(container):
+def get_conversations():
     with get_sql_session() as session:
         try:
             conversations = session.query(Conversation).filter(
@@ -160,7 +185,7 @@ def get_conversations(container):
             print("Could not load conversations")
             raise
         else:
-            app.conversations_display(sorted_conversations, container)
+            return sorted_conversations
 
 
 def load_conversation(id):
@@ -177,7 +202,7 @@ def load_conversation(id):
                 st.session_state.total_cost = 0
                 st.session_state.total_in_tokens = 0
                 st.session_state.total_out_tokens = 0
-            app.create_memory(recreate=True)
+            create_memory(recreate=True)
             st.session_state.memory.chat_memory.add_ai_message(f"Hola {vars.username}, ¿en qué puedo ayudarte?")
             for inter in interactions:
                 st.session_state.memory.chat_memory.add_user_message(inter.question)
@@ -186,6 +211,14 @@ def load_conversation(id):
                 st.session_state.total_out_tokens += inter.tokens
                 st.session_state.sql_interaction_id = interactions[len(interactions)-1].id
 
+def get_conversation(conversation_id):
+    with get_sql_session() as session:
+        try:
+            sql_conversation = session.query(Conversation).filter_by(id=conversation_id).first()
+        except:
+            session.rollback()
+            raise
+        return sql_conversation
 
 def edit_conversation_name():
     conversation_name = st.session_state.conversation_name
@@ -217,7 +250,7 @@ def delete_conversation(bool):
                 print("Could not delete conversation: ", st.session_state.delete_conversation_id)
                 raise
             else:
-                app.clear_history()
+                clear_history()
     del st.session_state.delete_conversation_id
     del st.session_state.delete_conversation_name
 
@@ -321,7 +354,7 @@ def edit_document_title():
         del st.session_state.edit_document_id
         del st.session_state.edit_document_title
 
-def delete_document(index, bool):
+def delete_document(bool):
     if bool:
         with get_sql_session() as session:
             try:
@@ -335,7 +368,7 @@ def delete_document(index, bool):
                 raise
             else:
                 if md5_documents == 1:
-                    index.delete(
+                    vars.index.delete(
                         filter={
                             "document_md5": {"$eq": sql_document.md5}
                         },

@@ -1,26 +1,25 @@
 ### Imports ###
-import os
-import time
-
-# import langchain
-# langchain.debug = True
-
 import streamlit as st
-import pinecone
+app_title = "Q&A Deep Learning Bot"
+st.set_page_config(
+    page_title=app_title,
+    initial_sidebar_state='expanded',
+)
+st.title(app_title)
 
-import vars
-import sql_alchemy as db
 import app_functions as app
-
-import app_langchain.models as models
 import app_langchain.chains as chains
-import app_langchain.tokens as tokens
-import app_langchain.indexing as indexing
 
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+#
+# --- CREATE MYSQL DATABASE ---
+#
+# Use in local DB only to recreate the DB schema (tables) based on ORM SQLAlchemy definition
+# app.db.create_database()
 
 
 #
@@ -31,27 +30,28 @@ def load_css():
         css = f"<style>{f.read()}</style>"
         st.markdown(css, unsafe_allow_html=True)
 
-app_title = "Q&A Deep Learning Bot"
-st.set_page_config(
-    page_title=app_title,
-    initial_sidebar_state='expanded',
-)
-st.title(app_title)
 load_css()
+app.vars.connect_to_pinecone()
+app.init_memory()
+
 
 if "app_mode" not in st.session_state:
-    app_mode = vars.AppMode.DEFAULT.value
+    app_mode = app.vars.AppMode.DEFAULT.value
 else:
     app_mode = st.session_state.app_mode
 
 with st.sidebar:
     app_mode = app.get_app_mode(app_mode)
 
-    if app_mode == vars.AppMode.DEFAULT.value:
+    if app_mode == app.vars.AppMode.DEFAULT.value:
         tab_conversations, tab_config, tab_faq, tab_debug = st.tabs(["Conversations", "Config", "FAQ", "Debug"])
     else:
        tab_conversations, tab_docs, tab_config, tab_faq, tab_debug = st.tabs(["Conversations", "Documents", "Config", "FAQ", "Debug"])
 
+
+#
+# --- FAQ ---
+#
 with tab_faq:
     with st.expander(label=f"¿Qué es {app_title}?", expanded=False):
         st.write(f"{app_title} es una aplicacion desarrollada por Rubén Catalán Medina en el trascurso de sus prácticas en la empresa ACCIONA.")
@@ -68,59 +68,14 @@ with tab_faq:
         st.write("En la pestaña `Config` verás algunas opciones técnicas que puedes modificar, como, por ejemplo, la fuente de información (`Index Namespace`).")
         st.write("En la pestaña `Debug` verás algunas trazas y variables internas que podrían ser útiles para reportar un problema.")
 
-    with st.expander(label=f"Modo {vars.AppMode.DOCUMENTS.value}", expanded=False):
-        st.write(f'En la pestaña de `Config` también verás que puedes cambiar el modo de la aplicación a "{vars.AppMode.DOCUMENTS.value}".')
+    with st.expander(label=f"Modo {app.vars.AppMode.DOCUMENTS.value}", expanded=False):
+        st.write(f'En la pestaña de `Config` también verás que puedes cambiar el modo de la aplicación a "{app.vars.AppMode.DOCUMENTS.value}".')
         st.write("En este modo, se te mostrará una nueva pestaña `Documents` en la que puedes subir tus propios documentos y hacer preguntas sobre uno o varios de ellos a la vez.")
 
     st.write("## Disclaimer")
     st.caption("""Esta aplicación genera las respuestas basandose en fragmentos de texto, extraidos de artículos académicos. \
-        Aun así, OpsGPT genera las respuestas usando un modelo de lenguaje natural (es decir, usa inteligencia artificial), y puede equivocarse. \
+        Aun así, la aplicación genera las respuestas usando un modelo de lenguaje natural (es decir, usa inteligencia artificial), y puede equivocarse. \
         Revisa bien las respuestas y las fuentes proporcionadas en ellas para asegurate de que sean correctas.""")
-
-#
-# --- CREATE MYSQL DATABASE ---
-#
-# Use in local DB only to recreate the DB schema (tables) based on ORM SQLAlchemy definition
-db.create_database()
-
-
-
-# ---------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
-#
-# --- CONNECT TO PINECONE ---
-#
-@st.cache_resource
-def get_pinecone_index():
-    pinecone.init(
-        api_key=os.environ["PINECONE_API_KEY"],
-        environment=os.environ["PINECONE_ENVIRONMENT"],
-    )
-    return pinecone.Index(vars.INDEX_NAME)
-
-# connect to index
-index = get_pinecone_index()
-namespace_options = sorted(list(index.describe_index_stats()["namespaces"].keys()))
-
-
-
-# ---------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
-tokens.check_counter_exist()
-app.create_memory()
-
-
-#
-# --- TAB CONVERSATIONS ---
-#
-with tab_conversations:
-    st.button(":heavy_plus_sign: New Conversation", on_click=app.clear_history, use_container_width=True)
-    st.divider()
-    db.get_conversations(st.container())
 
 
 #
@@ -129,31 +84,46 @@ with tab_conversations:
 with tab_config:
     slow_down = st.checkbox("Force streaming slowdown", value=True, help="Slowing down streaming of response. Enable for a ChatGPT-like user experience", key="slowdown")
 
-    query_deixis_resolution = st.checkbox("Enable Query Deixis Resolution (Beta)", value=vars.QUERY_DEIXIS_RESOLUTION,
+    query_deixis_resolution = st.checkbox("Enable Query Deixis Resolution (Beta)", value=app.vars.QUERY_DEIXIS_RESOLUTION,
                                           help="Internaly reformulate the user query to avoid ambiguity and ensure that the intended meaning is clear and independent of the conversation context", key="query_deixis_resolution")
-
 
     temp_slider = st.slider('Temperature', value=0.0, min_value=0.0, max_value=1.0, key="temperature",
                             help="How creative do you want the AI to be. A value close to 0 will be more precise, while a value close to 1 will be more creative.")
 
     min_score = st.slider('Minimal score', 0.70, 0.90, 0.75)
 
-    if st.session_state.app_mode == vars.AppMode.DEFAULT.value:
-        for docs_namespace in [s for s in namespace_options if 'documents' in s]:
-            namespace_options.pop(namespace_options.index(docs_namespace))
-        namespace = app.get_namespace(namespace_options, vars.INDEX_NAMESPACE)
+    if st.session_state.app_mode == app.vars.AppMode.DEFAULT.value:
+        for docs_namespace in [s for s in app.vars.namespace_options if 'documents' in s]:
+            app.vars.namespace_options.pop(app.vars.namespace_options.index(docs_namespace))
+        namespace = app.get_namespace(app.vars.namespace_options, app.vars.INDEX_NAMESPACE)
     else:
-        if "uploaded-documents" not in namespace_options:
-            indexing.inicialize_doc_namespace(index, "uploaded-documents")
-            index = get_pinecone_index()
-            namespace_options.append("uploaded-documents")
-        namespace = app.get_namespace(namespace_options, "uploaded-documents", disabled = True)
+        if "uploaded-documents" not in app.vars.namespace_options:
+            app.indexing.inicialize_doc_namespace(app.vars.index, "uploaded-documents")
+            app.vars.namespace_options.append("uploaded-documents")
+        namespace = app.get_namespace(app.vars.namespace_options, "uploaded-documents", disabled = True)
+
+    config = {
+        "app_mode": app_mode,
+        "query_deixis_resolution": query_deixis_resolution,
+        "temp_slider": temp_slider,
+        "min_score": min_score,
+        "namespace": namespace,
+    }
+
+
+#
+# --- TAB CONVERSATIONS ---
+#
+with tab_conversations:
+    st.button(":heavy_plus_sign: New Conversation", on_click=app.clear_history, use_container_width=True)
+    st.divider()
+    app.conversations_display(st.container())
 
 
 #
 # --- TAB DOCUMENTS ---
 #
-if app_mode == vars.AppMode.DOCUMENTS.value:
+if app_mode == app.vars.AppMode.DOCUMENTS.value:
     with tab_docs:
         with tab_docs.expander(label="Upload Documents", expanded=False):
             with st.form(key="upload-pdf-form", clear_on_submit=True):
@@ -162,39 +132,23 @@ if app_mode == vars.AppMode.DOCUMENTS.value:
                 submitted = st.form_submit_button("Upload Documents", type="primary", use_container_width=True)
 
             if submitted and files:
-                app.save_uploaded_docs(index, files, progress_widget)
+                app.save_uploaded_docs(files, progress_widget)
 
-        app.documents_display(index)
+        app.documents_display()
+
 
 #
 # --- MAIN ---
 #
-app.expander(tab=tab_debug, label="OpenAI API Endpoint", expanded=False, content=os.environ["OPENAI_API_BASE"])
-
-app.render_history()
-history = app.get_last_k_history(vars.MEMORY_K)
+history = app.get_last_k_history(app.vars.MEMORY_K)
 query = app.get_query()
 msg_box = st.empty()
-
-config = {
-    "app_mode": app_mode,
-    "query_deixis_resolution": query_deixis_resolution,
-    "temp_slider": temp_slider,
-    "min_score": min_score,
-    "namespace": namespace,
-}
 
 if query:
     st.chat_message("user").write(query)
     st.session_state.memory.chat_memory.add_user_message(query)
 
     msg_box = st.empty()
-    # output_box = msg_box.chat_message("assistant")
-
-    # Reset MyStreamingCallbackHandler instance
-    MyStreamingCallbackHandler = models.MyStreamingCallbackHandlerClass()
-    MyStreamingCallbackHandler.set_slow_down(slow_down)
-    MyStreamingCallbackHandler.set_widget(msg_box)
 
     widgets = {
         "tab_debug": tab_debug,
@@ -202,15 +156,15 @@ if query:
         "slow_down": slow_down,
     }
 
-    db.save_conversation()
+    app.create_conversation()
 
 
-    if app_mode == vars.AppMode.DEFAULT.value:
-        response = chains.get_chat_response(index, config, history, query, widgets=widgets)
+    if app_mode == app.vars.AppMode.DEFAULT.value:
+        response = chains.get_chat_response(app.vars.index, config, history, query, widgets=widgets)
 
-    elif app_mode == vars.AppMode.DOCUMENTS.value:
-        documents = db.get_selected_documents()
-        response = chains.get_chat_response(index, config, history, query, widgets=widgets, documents=documents)
+    elif app_mode == app.vars.AppMode.DOCUMENTS.value:
+        documents = app.db.get_selected_documents()
+        response = chains.get_chat_response(app.vars.index, config, history, query, widgets=widgets, documents=documents)
 
     ai_feedback = response["ai_feedback"]
     try:
@@ -218,28 +172,20 @@ if query:
             ai_feedback = bool(ai_feedback)
     except:
         ai_feedback = False
-    app.expander(tab=tab_debug, label="ai_feedback", expanded=False, content=ai_feedback)
+    chains.expander(tab=tab_debug, label="ai_feedback", expanded=False, content=ai_feedback)
 
     resp_AIMessage = response["response"]
-    db.save_interaction(query, resp_AIMessage, config, ai_feedback, response["chunks"], response["deixis_query"])
 
-    app.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage)
+    conver_name = app.db.get_conversation(st.session_state.sql_conversation_id).name
+    if conver_name is None:
+        conver_name = chains.naming_chain(query, response).content
+    app.db.save_interaction(conver_name, query, resp_AIMessage, config, ai_feedback, response["chunks"], response["deixis_query"])
+
+    chains.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage)
     st.session_state.memory.chat_memory.add_ai_message(resp_AIMessage)
 
-if "total_cost" in st.session_state and st.session_state.total_cost != 0:
-    # st.caption(f"Input tokens: {st.session_state.question_in_tokens}, Output tokens: {st.session_state.question_out_tokens}, Cost: ${st.session_state.question_cost:.2f}")
-    # st.caption(f"Total input tokens: {st.session_state.total_in_tokens}, Total output tokens: {st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
 
-    cols = st.container().columns((10,5,5))
-    # cols[0].caption(f"Total tokens: {st.session_state.total_in_tokens + st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
-    cols[0].caption(f"Total cost: ${st.session_state.total_cost:.2f}")
-    good_feedback = cols[1].button(label=":+1:", use_container_width=True)
-    bad_feedback = cols[2].button(label=":-1:", use_container_width=True)
-    if good_feedback:
-        db.save_feedback(True)
-    elif bad_feedback:
-        db.save_feedback(False)
-
+app.tokens_and_feedback_display()
 del st.session_state.question_in_tokens
 del st.session_state.question_out_tokens
 del st.session_state.question_cost

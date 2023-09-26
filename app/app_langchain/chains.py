@@ -1,5 +1,3 @@
-import json
-import re
 from typing import (
     Any,
     Dict,
@@ -17,32 +15,32 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-
 from langchain.chains import (
     LLMChain,
     TransformChain,
     SequentialChain,
 )
-
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.callbacks.manager import CallbackManagerForChainRun
 
 import tiktoken
 import random
 import streamlit as st
-import vars
-import app_functions as app
-import sql_alchemy as db
 
+import app_functions as app
 import app_langchain.models as models
 
 
 def dummy_func(inputs: dict) -> dict:
     return inputs
 
+def expander(tab, label, expanded=False, content=""):
+    with tab.expander(label=label, expanded=expanded):
+        st.write(content)
+
 
 #
-# --- DUMMY FUNCTION ---
+# --- DUMMY CHAIN ---
 #
 class DummyChain(TransformChain):
     """Custom Dummy Chain."""
@@ -102,7 +100,7 @@ class ChunkRetrieval(TransformChain):
         if "filter" in inputs.keys():
             filter = inputs["filter"]
             inputs.pop("filter")
-        elif self.app_mode == vars.AppMode.DOCUMENTS.value:
+        elif self.app_mode == app.vars.AppMode.DOCUMENTS.value:
             filter={
                 "document_md5": {"$in": self.documents}
             }
@@ -112,11 +110,11 @@ class ChunkRetrieval(TransformChain):
         for key in inputs.keys():
             query = inputs[key]
             if self.widgets:
-                app.expander(tab=self.widgets['tab_debug'], label=key, expanded=(key=="deixis_query"), content=query)
+                expander(tab=self.widgets['tab_debug'], label=key, expanded=(key=="deixis_query"), content=query)
 
         if self.widgets:
             self.widgets['msg_box'].chat_message("assistant").write("Requesting query embedding")
-        query_embedding = OpenAIEmbeddings(model=vars.EMBEDDING_MODEL).embed_query(query)
+        query_embedding = OpenAIEmbeddings(model=app.vars.EMBEDDING_MODEL).embed_query(query)
 
         if self.widgets:
             self.widgets['msg_box'].chat_message("assistant").write("Requesting matching embeddings")
@@ -159,7 +157,6 @@ class ChunkFormatter(TransformChain):
     # --- TOKEN COUNT FUNCTION ---
     def _tiktoken_len(self, text):
         tokenizer = tiktoken.get_encoding('cl100k_base')
-        # tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
         tokens = tokenizer.encode(
             self._posTratamiento(text),
             disallowed_special=()
@@ -175,9 +172,9 @@ class ChunkFormatter(TransformChain):
         self.widgets['msg_box'].chat_message("assistant").write("Creating Prompt")
 
         # Return a array [] of dicts {"chunk": chunk} needed for the example selector
-        if app_mode == vars.AppMode.DOCUMENTS.value:
+        if app_mode == app.vars.AppMode.DOCUMENTS.value:
             formatted_chunks = [
-                f"Fuente: {db.get_document_title(item['metadata']['document_md5'])}, Página {int(item['metadata']['page'])}"
+                f"Fuente: {app.db.get_document_title(item['metadata']['document_md5'])}, Página {int(item['metadata']['page'])}"
                 f"\n\n"
                 f"Relevancia: {100*item['score']:.2f}%"
                 f"\n\n"
@@ -230,7 +227,7 @@ class ChunkFormatter(TransformChain):
     ) -> Dict[str, str]:
         formatted_chunks = self._format_chunks(inputs["chunks"], self.app_mode)
         formatted_chunks = self._few_shot_chunk_selector(formatted_chunks)
-        app.expander(tab=self.widgets['tab_debug'], label="formatted_chunks", expanded=False, content=formatted_chunks)
+        expander(tab=self.widgets['tab_debug'], label="formatted_chunks", expanded=False, content=formatted_chunks)
         return {self.output_variables[0]: formatted_chunks}
 
 
@@ -238,12 +235,12 @@ class ChunkFormatter(TransformChain):
 # --- CHAT CONVERSATION ---
 #
 def get_chat_system_template(app_mode)  -> SystemMessagePromptTemplate:
-    if app_mode == vars.AppMode.DEFAULT.value:
+    if app_mode == app.vars.AppMode.DEFAULT.value:
         source_format = '"[Título](URL)"'
     else:
         source_format = '"Título, Página X"'
 
-    system_template = """Te llamas """+vars.AI_NAME+""". Tienes muchos años de experiencia en Deep Learning.
+    system_template = """Te llamas """+app.vars.AI_NAME+""". Tienes muchos años de experiencia en Deep Learning.
         Tu tarea es responder con datos relevantes sobre el tema indicado por el usuario basandote en tus conocimientos.
 
         En particular, encontraste estos fragmentos de informacion que podrían ser relevantes: \"\"\"\n
@@ -260,8 +257,8 @@ def get_chat_system_template(app_mode)  -> SystemMessagePromptTemplate:
         """
 
     # Randomly address the user by its name
-    if vars.username != "" and random.randint(0,10) == 0:
-        system_template += f"\n\nRecuerda llamar al usuario por su nombre: {vars.username}."
+    if app.vars.username != "" and random.randint(0,10) == 0:
+        system_template += f"\n\nRecuerda llamar al usuario por su nombre: {app.vars.username}."
 
     return SystemMessagePromptTemplate.from_template(template=system_template)
 
@@ -273,7 +270,7 @@ def create_chat_conversation(history, widgets, app_mode):
         conversation = conversation + history
     conversation.append(HumanMessagePromptTemplate.from_template(template="{query}"))
 
-    app.expander(tab=widgets['tab_debug'], label="conversation_template", expanded=False, content=conversation)
+    expander(tab=widgets['tab_debug'], label="conversation_template", expanded=False, content=conversation)
     return conversation
 
 
@@ -387,7 +384,7 @@ def get_chat_response(index, config, history, query, widgets, documents = []):
         widgets=widgets,
         documents=documents,
     )({"query":query})
-    response["response"] = app.replace_urls_with_fqdn_and_lastpath(response["response"])
+    response["response"] = models.replace_urls_with_fqdn_and_lastpath(response["response"])
     return response
 
 

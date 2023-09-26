@@ -1,18 +1,21 @@
 import os
+import re
+from urllib.parse import urlparse
+
 from langchain.chat_models import AzureChatOpenAI
 from langchain.callbacks.base import BaseCallbackManager, BaseCallbackHandler
+from langchain.schema import (
+    LLMResult,
+)
 
 from uuid import UUID
 import time
 from typing import (
     Any,
 )
-from langchain.schema import (
-    LLMResult,
-)
 
 import app_langchain.tokens as tokens
-import app_functions as app
+
 
 #
 # --- AZURE CHAT MODEL ---
@@ -79,10 +82,34 @@ class MyStreamingCallbackHandlerClass(BaseCallbackHandler):
         # Do something with the new token
         self.incomplete_chat_model_answer = self.incomplete_chat_model_answer + token
         self.widget.chat_message("assistant").write(
-            app.replace_urls_with_fqdn_and_lastpath(self.incomplete_chat_model_answer)
+            replace_urls_with_fqdn_and_lastpath(self.incomplete_chat_model_answer)
             )
         if self.slow_down:
             time.sleep(15/1000)
 
     def on_llm_end(self, response: LLMResult, *, run_id: UUID, parent_run_id = None, **kwargs: Any) -> Any:
         tokens.add_tokens(text=response.generations[0][0].message.content, type=tokens.TokenType.OUTPUT)
+
+
+#
+# --- URL RESPONSE FORMATTER ---
+#
+def replace_urls_with_fqdn_and_lastpath(text: str):
+    # Matches URLs but not thoses like []()
+    url_pattern = re.compile(r'''(?<!\])\((?:https?://)\S+\)|(?<!\()\b(?:https?://)\S+\b(?!\))''')
+
+    # Replace all URLs with their FQDN and last path segment
+    def replace_url(match):
+        url = match.group(0)
+        parsed_url = urlparse(url)
+        scheme = parsed_url.scheme
+        netloc = parsed_url.netloc
+        path_segments = parsed_url.path.split('/')
+
+        if len(path_segments)>3:
+            last_segment = path_segments[-1] if path_segments[-1] else path_segments[-2]
+            return f"[{scheme}://{netloc}/.../{last_segment}]({url})"
+        else:
+           return url
+
+    return url_pattern.sub(replace_url, text)

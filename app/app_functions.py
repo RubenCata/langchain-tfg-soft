@@ -1,56 +1,24 @@
 import os
 from uuid import uuid4
-import re
 import datetime
 import hashlib
-from urllib.parse import urlparse
+
 import streamlit as st
 from typing import (
-    Any,
-    Dict,
     List,
-    Optional,
 )
 
-from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain.document_loaders import PyMuPDFLoader, UnstructuredFileLoader
+
 import vars
 import sql_alchemy as db
 import app_langchain.indexing as indexing
 
 
-#
-# --- URL RESPONSE FORMATTER ---
-#
-def replace_urls_with_fqdn_and_lastpath(text: str):
-    # Matches URLs but not thoses like []()
-    url_pattern = re.compile(r'''(?<!\])\((?:https?://)\S+\)|(?<!\()\b(?:https?://)\S+\b(?!\))''')
-
-    # Replace all URLs with their FQDN and last path segment
-    def replace_url(match):
-        url = match.group(0)
-        parsed_url = urlparse(url)
-        scheme = parsed_url.scheme
-        netloc = parsed_url.netloc
-        path_segments = parsed_url.path.split('/')
-
-        if len(path_segments)>3:
-            last_segment = path_segments[-1] if path_segments[-1] else path_segments[-2]
-            return f"[{scheme}://{netloc}/.../{last_segment}]({url})"
-        else:
-           return url
-
-    return url_pattern.sub(replace_url, text)
-
 
 #
 # --- WEB FUNCTIONS ---
 #
-def expander(tab, label, expanded=False, content=""):
-    with tab.expander(label=label, expanded=expanded):
-        st.write(content)
-
-
 def get_query():
     return st.chat_input(
         placeholder="Escribe tu pregunta.",
@@ -87,10 +55,30 @@ def file_uploader():
         label_visibility="collapsed")
 
 
+def check_counter_exist():
+    if 'total_in_tokens' not in st.session_state:
+        st.session_state.total_in_tokens = 0
+
+    if 'total_out_tokens' not in st.session_state:
+        st.session_state.total_out_tokens = 0
+
+    if 'total_cost' not in st.session_state:
+        st.session_state.total_cost = 0
+
+    if 'question_in_tokens' not in st.session_state:
+        st.session_state.question_in_tokens = 0
+
+    if 'question_out_tokens' not in st.session_state:
+        st.session_state.question_out_tokens = 0
+
+    if 'question_cost' not in st.session_state:
+        st.session_state.question_cost = 0
+
+
 #
 # --- PDF FUNCTIONS ---
 #
-def save_uploaded_docs(index, files, progress_widget):
+def save_uploaded_docs(files, progress_widget):
     path = "../documents"
     if not(os.path.exists(path) and os.path.isdir(path)):
         os.mkdir(path)
@@ -112,7 +100,7 @@ def save_uploaded_docs(index, files, progress_widget):
         document_id = str(uuid4())
         chunks = indexing.chunk_doc(pages, file_extension, document_md5=md5)
         if not db.exists_document_md5(md5) and len(chunks) > 0:
-            indexing.embed_doc_to_pinecone(index, chunks, progress_widget)
+            indexing.embed_doc_to_pinecone(chunks, progress_widget)
             db.save_document(document_id, file.name, chunks[0]['title'], md5)
             progress_widget.container()
         elif len(chunks) <= 0:
@@ -122,27 +110,15 @@ def save_uploaded_docs(index, files, progress_widget):
 
 
 #
-# --- SESSION STATE HISTORY ---
+# --- HISTORY ---
 #
-def create_memory(recreate: bool = False):
-    # Create a ConversationEntityMemory object if not already created
-    if 'memory' not in st.session_state or recreate:
-        st.session_state.memory = ConversationBufferWindowMemory(
-            memory_key="history",
-            k=vars.MEMORY_K,
-            ai_prefix=vars.AI_NAME,
-            human_prefix=vars.username,
-            # return_messages=True,
-        )
-
+def init_memory():
+    check_counter_exist()
+    db.create_memory()
+    render_history()
 
 def clear_history():
-    if len(st.session_state.memory.chat_memory.messages) > 1:
-        del st.session_state.memory
-        del st.session_state.sql_conversation_id
-        st.session_state.total_in_tokens = 0
-        st.session_state.total_out_tokens = 0
-        st.session_state.total_cost = 0
+    db.clear_history()
 
 
 def render_history():
@@ -169,7 +145,12 @@ def get_last_k_history(k) -> List:
 #
 # --- CONVERSATIONS TAB FUNCTIONS ---
 #
-def conversations_display(conversations, container):
+def create_conversation():
+    if 'sql_conversation_id' not in st.session_state:
+        db.create_conversation()
+
+def conversations_display(container):
+    conversations = db.get_conversations()
     with container:
         now = datetime.datetime.now()
         today_caption = False
@@ -277,7 +258,7 @@ def delete_conversation_confirmation_display():
 #
 # --- DOCUMENTS TAB FUNCTIONS ---
 #
-def documents_display(index):
+def documents_display():
 
     documents = db.get_documents()
     selected = sum(list(map(lambda doc: doc.selected, documents)))
@@ -294,7 +275,7 @@ def documents_display(index):
                 st.session_state.selected_documents.add(doc.id)
 
             if "delete_document_id" in st.session_state and doc.id == st.session_state.delete_document_id:
-                delete_document_confirmation_display(index)
+                delete_document_confirmation_display()
             elif "edit_document_id" in st.session_state and doc.id == st.session_state.edit_document_id:
                 edit_document_title_display()
 
@@ -354,10 +335,29 @@ def confirm_delete_document(doc_id, doc_title):
         del st.session_state.edit_document_id
         del st.session_state.edit_document_title
 
-def delete_document_confirmation_display(index):
+def delete_document_confirmation_display():
     st.divider()
     st.error('Are you sure you want to delete the document "'+ st.session_state.delete_document_title[:50] +'"?')
     cols = st.columns((1,1))
-    cols[0].button(label="Yes, delete.", key=str(uuid4()), on_click=db.delete_document, args=(index, True, ), type="primary", use_container_width=True)
-    cols[1].button(label="No, cancel.", key=str(uuid4()), on_click=db.delete_document, args=(index, False, ), type="primary", use_container_width=True)
+    cols[0].button(label="Yes, delete.", key=str(uuid4()), on_click=db.delete_document, args=(True, ), type="primary", use_container_width=True)
+    cols[1].button(label="No, cancel.", key=str(uuid4()), on_click=db.delete_document, args=(False, ), type="primary", use_container_width=True)
     st.divider()
+
+
+#
+# --- TOKENS AND FEEDBACK
+#
+def tokens_and_feedback_display():
+    if "total_cost" in st.session_state and st.session_state.total_cost != 0:
+        # st.caption(f"Input tokens: {st.session_state.question_in_tokens}, Output tokens: {st.session_state.question_out_tokens}, Cost: ${st.session_state.question_cost:.2f}")
+        # st.caption(f"Total input tokens: {st.session_state.total_in_tokens}, Total output tokens: {st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
+
+        cols = st.container().columns((10,5,5))
+        # cols[0].caption(f"Total tokens: {st.session_state.total_in_tokens + st.session_state.total_out_tokens}, Total cost: ${st.session_state.total_cost:.2f}")
+        cols[0].caption(f"Total cost: ${st.session_state.total_cost:.2f}")
+        good_feedback = cols[1].button(label=":+1:", use_container_width=True)
+        bad_feedback = cols[2].button(label=":-1:", use_container_width=True)
+        if good_feedback:
+            db.save_feedback(True)
+        elif bad_feedback:
+            db.save_feedback(False)

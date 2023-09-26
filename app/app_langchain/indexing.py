@@ -74,7 +74,7 @@ def chunk_doc(pages, file_extension, document_md5):
     return chunks
 
 
-def embed_doc_to_pinecone(index, chunks, progress_widget):
+def embed_doc_to_pinecone(chunks, progress_widget):
     batch_size = 50
     progress_text = f'Processing the document "{chunks[0]["title"]}" for Q&A. Please wait.'
     my_bar = progress_widget.progress(0, text=progress_text)
@@ -122,7 +122,7 @@ def embed_doc_to_pinecone(index, chunks, progress_widget):
 
         # upsert batch to Pinecone
         to_upsert = zip(ids_batch, embeds, meta_batch)
-        index.upsert(vectors=list(to_upsert), namespace='uploaded-documents')
+        vars.index.upsert(vectors=list(to_upsert), namespace='uploaded-documents')
 
         percent_complete = percent_complete + step
         if percent_complete > 100:
