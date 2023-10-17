@@ -221,8 +221,9 @@ def confirm_edit_conversation_name(conversation_id, conversation_name):
         del st.session_state.delete_conversation_name
 
 def cancel_edit_conversation_name():
-    del st.session_state.edit_conversation_id
-    del st.session_state.edit_conversation_name
+    if "edit_conversation_id" and "edit_conversation_name" in st.session_state:
+        del st.session_state.edit_conversation_id
+        del st.session_state.edit_conversation_name
 
 def edit_conversation_name_display():
     st.divider()
@@ -242,9 +243,7 @@ def del_conversation_button(conversation_id, conversation_name):
 def confirm_delete_conversation(conversation_id, conversation_name):
     st.session_state.delete_conversation_id = conversation_id
     st.session_state.delete_conversation_name = conversation_name
-    if "edit_conversation_id" and "edit_conversation_name" in st.session_state:
-        del st.session_state.edit_conversation_id
-        del st.session_state.edit_conversation_name
+    cancel_edit_conversation_name()
 
 def delete_conversation_confirmation_display():
     st.divider()
@@ -310,8 +309,9 @@ def confirm_edit_document_title(doc_id, doc_title):
         del st.session_state.delete_document_title
 
 def cancel_edit_document_title():
-    del st.session_state.edit_document_id
-    del st.session_state.edit_document_title
+    if "edit_document_id" and "edit_document_title" in st.session_state:
+        del st.session_state.edit_document_id
+        del st.session_state.edit_document_title
 
 def edit_document_title_display():
     st.divider()
@@ -331,9 +331,7 @@ def del_document_button(doc_id, doc_title):
 def confirm_delete_document(doc_id, doc_title):
     st.session_state.delete_document_id= doc_id
     st.session_state.delete_document_title = doc_title
-    if "edit_document_id" and "edit_document_title" in st.session_state:
-        del st.session_state.edit_document_id
-        del st.session_state.edit_document_title
+    cancel_edit_document_title()
 
 def delete_document_confirmation_display():
     st.divider()
