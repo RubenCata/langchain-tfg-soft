@@ -164,7 +164,7 @@ def conversations_display(container):
             else:
                 button_type = "secondary"
 
-            dif = (now - conver.interactions[0].timestamp).days
+            dif = (now - max([i.timestamp for i in conver.interactions])).days
             if not today_caption and dif < 1:
                 st.caption("Today")
                 today_caption = True

@@ -5,7 +5,6 @@ st.set_page_config(
     page_title=app_title,
     initial_sidebar_state='expanded',
 )
-st.title(app_title)
 
 import app_functions as app
 import app_langchain.chains as chains
@@ -31,9 +30,6 @@ def load_css():
         st.markdown(css, unsafe_allow_html=True)
 
 load_css()
-app.vars.connect_to_pinecone()
-app.init_memory()
-
 
 if "app_mode" not in st.session_state:
     app_mode = app.vars.AppMode.DEFAULT.value
@@ -44,17 +40,22 @@ with st.sidebar:
     app_mode = app.get_app_mode(app_mode)
 
     if app_mode == app.vars.AppMode.DEFAULT.value:
+        main_title = "Q&A Deep Learning"
         tab_conversations, tab_config, tab_faq, tab_debug = st.tabs(["Conversations", "Config", "FAQ", "Debug"])
     else:
+       main_title = "Q&A Private Documents"
        tab_conversations, tab_docs, tab_config, tab_faq, tab_debug = st.tabs(["Conversations", "Documents", "Config", "FAQ", "Debug"])
 
+st.title(main_title)
+app.vars.connect_to_pinecone()
+app.init_memory()
 
 #
 # --- FAQ ---
 #
 with tab_faq:
-    with st.expander(label=f"¿Qué es {app_title}?", expanded=False):
-        st.write(f"{app_title} es una aplicacion desarrollada por Rubén Catalán Medina en el trascurso de sus prácticas en la empresa ACCIONA.")
+    with st.expander(label=f"¿Qué es esta aplicación?", expanded=False):
+        st.write(f"Es una aplicacion desarrollada por Rubén Catalán Medina en el trascurso de sus prácticas en la empresa ACCIONA.")
         st.write("Esta aplicación ha sido adaptada para trabajar en este TFG con una base de conocimiento sobre Deep Learning, de forma que permite hacer preguntas sobre temas relacionados.")
 
     with st.expander(label=f"¿Qué documentación se ha usado para crear la base de conocimento?", expanded=False):

@@ -38,7 +38,7 @@ MEMORY_K = 5
 # --- ENUM CLASSES ---
 #
 class AppMode(Enum):
-    DEFAULT = "Default"
+    DEFAULT = "Deep Learning"
     DOCUMENTS = "Documents"
 
 

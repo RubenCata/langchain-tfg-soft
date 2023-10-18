@@ -1,8 +1,9 @@
 from datetime import datetime
-from sqlalchemy import JSON, Boolean, Column, Float, Integer, String, ForeignKey, DateTime, UnicodeText, create_engine
+from sqlalchemy import JSON, Boolean, Column, Float, Integer, String, ForeignKey, DateTime, UnicodeText, create_engine, desc, func
 from sqlalchemy.orm import (
     declarative_base,
     relationship,
+    joinedload,
     Session,
 )
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
@@ -174,18 +175,14 @@ def get_conversations():
             conversations = session.query(Conversation).filter(
                 Conversation.active == True,
                 Conversation.name.is_not(None),
-                ).all()
-            clean_conversations = []
-            for conver in conversations:
-                if len(conver.interactions) > 0:
-                    clean_conversations.append(conver)
-            sorted_conversations = sorted(clean_conversations, key=lambda x: x.interactions[0].timestamp, reverse=True)
+                Conversation.interactions.any(),
+                ).outerjoin(Conversation.interactions).group_by(Conversation.id).order_by(desc(func.max(Interaction.timestamp))).options(joinedload(Conversation.interactions)).all()
         except:
             session.rollback()
             print("Could not load conversations")
             raise
         else:
-            return sorted_conversations
+            return conversations
 
 
 def load_conversation(id):
