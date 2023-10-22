@@ -9,12 +9,13 @@ from streamlit import cache_resource
 #
 config = yaml.safe_load(open("../tfg-config.yml"))
 
-openai_instance=config["openai"]["azure_us"]
+openai_instance=config["openai"]["azure"]
 
 os.environ["OPENAI_API_TYPE"] = openai_instance["api_type"]
 os.environ["OPENAI_API_KEY"] = openai_instance["api_key"]
 os.environ["OPENAI_API_BASE"] = openai_instance["api_base"]
 os.environ["OPENAI_API_VERSION"] = openai_instance["api_version"]
+os.environ["DEPLOYMENT_NAME"] = openai_instance["deployment_name"]
 
 pinecone_instance=config["pinecone"]
 os.environ["PINECONE_API_KEY"] = pinecone_instance["api_key"]
@@ -24,9 +25,8 @@ os.environ["DB_CONNECTION_STR"] = config["db"]
 username = config["user"]["username"]
 
 INDEX_NAME = pinecone_instance["index_name"]
-INDEX_NAMESPACE = "arxiv-11-07-2023"
+INDEX_NAMESPACE = pinecone_instance["default_namespace"]
 
-os.environ["DEPLOYMENT_NAME"] = "gpt-35-turbo-v0301"
 EMBEDDING_MODEL = "text-embedding-ada-002"
 AI_NAME = os.getenv('AI_NAME', 'AI Bot')
 QUERY_DEIXIS_RESOLUTION = (os.getenv('QUERY_DEIXIS_RESOLUTION', 'True').upper() == "TRUE")
