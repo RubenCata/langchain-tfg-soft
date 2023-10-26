@@ -140,7 +140,6 @@ class ChunkRetrieval(TransformChain):
 #
 class ChunkFormatter(TransformChain):
     """Custom Chunk Formatter Transform Chain."""
-    min_score: Any
     widgets: Any
     app_mode: Any
     input_variables: List[str] = ["chunks"]
@@ -180,7 +179,7 @@ class ChunkFormatter(TransformChain):
                 f"\n\n"
                 f"Contenido: {item['metadata']['text']}"
 
-                for item in chunks if item['score'] > self.min_score
+                for item in chunks if item['score']
             ]
         else:
             formatted_chunks = [
@@ -190,7 +189,7 @@ class ChunkFormatter(TransformChain):
                 f"\n\n"
                 f"Título: {item['metadata']['text']}"
 
-                for item in chunks if item['score'] > self.min_score
+                for item in chunks if item['score']
             ]
         return [{"chunk": self._preTratamiento(chunk)} for chunk in formatted_chunks]
 
@@ -312,7 +311,6 @@ def create_search_sequential_chain(input_variables, index, config, history, llm,
         transform=dummy_func,
         input_variables=["chunks"],
         output_variables=["formatted_chunks"],
-        min_score=config['min_score'],
         widgets=widgets,
         app_mode=config["app_mode"],
     ))
@@ -373,7 +371,6 @@ def create_sequential_chain(llm, index, config, history, widgets, documents):
 #
 def get_chat_response(index, config, history, query, widgets, documents = []):
     MyStreamingCallbackHandler = models.MyStreamingCallbackHandlerClass()
-    MyStreamingCallbackHandler.set_slow_down(widgets['slow_down'])
     MyStreamingCallbackHandler.set_widget(widgets['msg_box'])
     llm = models.get_chat_model(temperature=config['temp_slider'], handler=MyStreamingCallbackHandler)
     response = create_sequential_chain(

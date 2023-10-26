@@ -63,12 +63,8 @@ class FakeStreamingCallbackHandlerClass(BaseCallbackHandler):
 #
 class MyStreamingCallbackHandlerClass(BaseCallbackHandler):
     """Custom CallbackHandler."""
-    slow_down: bool = True
     widget = None
     incomplete_chat_model_answer: str = ""
-
-    def set_slow_down(self, slow_down):
-        self.slow_down = slow_down
 
     def set_widget(self, widget):
         self.widget = widget
@@ -84,8 +80,7 @@ class MyStreamingCallbackHandlerClass(BaseCallbackHandler):
         self.widget.chat_message("assistant").write(
             replace_urls_with_fqdn_and_lastpath(self.incomplete_chat_model_answer)
             )
-        if self.slow_down:
-            time.sleep(15/1000)
+        time.sleep(10/1000)
 
     def on_llm_end(self, response: LLMResult, *, run_id: UUID, parent_run_id = None, **kwargs: Any) -> Any:
         tokens.add_tokens(text=response.generations[0][0].message.content, type=tokens.TokenType.OUTPUT)

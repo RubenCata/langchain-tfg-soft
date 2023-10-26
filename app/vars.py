@@ -29,8 +29,6 @@ INDEX_NAMESPACE = pinecone_instance["default_namespace"]
 
 EMBEDDING_MODEL = "text-embedding-ada-002"
 AI_NAME = os.getenv('AI_NAME', 'AI Bot')
-QUERY_DEIXIS_RESOLUTION = (os.getenv('QUERY_DEIXIS_RESOLUTION', 'True').upper() == "TRUE")
-
 MEMORY_K = 5
 
 

@@ -73,25 +73,18 @@ with tab_faq:
         st.write(f'En la pestaña de `Config` también verás que puedes cambiar el modo de la aplicación a "{app.vars.AppMode.DOCUMENTS.value}".')
         st.write("En este modo, se te mostrará una nueva pestaña `Documents` en la que puedes subir tus propios documentos y hacer preguntas sobre uno o varios de ellos a la vez.")
 
-    st.write("## Disclaimer")
-    st.caption("""Esta aplicación genera las respuestas basandose en fragmentos de texto, extraidos de artículos académicos. \
-        Aun así, la aplicación genera las respuestas usando un modelo de lenguaje natural (es decir, usa inteligencia artificial), y puede equivocarse. \
-        Revisa bien las respuestas y las fuentes proporcionadas en ellas para asegurate de que sean correctas.""")
+    with st.expander(label="Disclaimer", expanded=False):
+        st.write("""Esta aplicación genera las respuestas basandose en fragmentos de texto, extraidos de artículos académicos. \
+            Aun así, la aplicación genera las respuestas usando un modelo de lenguaje natural (es decir, usa inteligencia artificial), y puede equivocarse. \
+            Revisa bien las respuestas y las fuentes proporcionadas en ellas para asegurate de que sean correctas.""")
 
 
 #
 # --- TAB CONFIG ---
 #
 with tab_config:
-    slow_down = st.checkbox("Force streaming slowdown", value=True, help="Slowing down streaming of response. Enable for a ChatGPT-like user experience", key="slowdown")
-
-    query_deixis_resolution = st.checkbox("Enable Query Deixis Resolution (Beta)", value=app.vars.QUERY_DEIXIS_RESOLUTION,
-                                          help="Internaly reformulate the user query to avoid ambiguity and ensure that the intended meaning is clear and independent of the conversation context", key="query_deixis_resolution")
-
     temp_slider = st.slider('Temperature', value=0.0, min_value=0.0, max_value=1.0, key="temperature",
                             help="How creative do you want the AI to be. A value close to 0 will be more precise, while a value close to 1 will be more creative.")
-
-    min_score = st.slider('Minimal score', 0.70, 0.90, 0.75)
 
     if st.session_state.app_mode == app.vars.AppMode.DEFAULT.value:
         for docs_namespace in [s for s in app.vars.namespace_options if 'documents' in s]:
@@ -105,9 +98,7 @@ with tab_config:
 
     config = {
         "app_mode": app_mode,
-        "query_deixis_resolution": query_deixis_resolution,
         "temp_slider": temp_slider,
-        "min_score": min_score,
         "namespace": namespace,
     }
 
@@ -154,7 +145,6 @@ if query:
     widgets = {
         "tab_debug": tab_debug,
         "msg_box": msg_box,
-        "slow_down": slow_down,
     }
 
     app.create_conversation()
