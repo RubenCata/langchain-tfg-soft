@@ -61,4 +61,4 @@
 
   Una vez instalado todo lo necesario, la aplicación se puede ejecutar en local simplemente con la siguiente sentencia:
 
-  ```$ streamlit run .\app\main.py```
+  ```$ streamlit run app\main.py```
