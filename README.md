@@ -58,6 +58,7 @@
   Aunque no es necesario, si es recomendable crearse un entorno virtual en el que ejecutar la instalar las librerias y ejecutar la aplicación. Se puede saltar este paso pero podría haber conflictos de librerias si tienes otros proyectos de Python en tu ordenador. La creación y activación del entorno virtual sería  usando:
 
   ```$ python -m venv venv```
+  
   ```$ venv\Scripts\activate```
   
   Para instalar las librerias necesarias e indicadas en el archivo ```requirements.txt```, se debe usar la siguiente sentencia:
