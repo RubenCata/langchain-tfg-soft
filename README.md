@@ -54,6 +54,13 @@
 
   También se requiere un index en una base de datos de vectores de Pinecone con el nombre, namespace y entorno que se indiquen en el archivo propio ```tfg-config.yml```
   Es importante tener previamente indexada la información privada en un namespace especifico. En caso de no tener información privada, se deberá crear un namespace vacío con el que trabajar por defecto.
+
+  Aunque no es necesario, si es recomendable crearse un entorno virtual en el que ejecutar la instalar las librerias y ejecutar la aplicación. Se puede saltar este paso pero podría haber conflictos de librerias si tienes otros proyectos de Python en tu ordenador. La creación y activación del entorno virtual sería  usando:
+
+  ```
+  $ python -m venv venv
+  $ venv\Scripts\activate
+  ```
   
   Para instalar las librerias necesarias e indicadas en el archivo ```requirements.txt```, se debe usar la siguiente sentencia:
 
