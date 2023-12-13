@@ -169,7 +169,7 @@ if query:
 
     conver_name = app.db.get_conversation(st.session_state.sql_conversation_id).name
     if conver_name is None:
-        conver_name = chains.naming_chain(query, response).content
+        conver_name = chains.naming_chain(query, resp_AIMessage).content
     app.db.save_interaction(conver_name, query, resp_AIMessage, config, ai_feedback, response["chunks"], response["deixis_query"])
 
     chains.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage)
