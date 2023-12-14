@@ -185,3 +185,6 @@ app.tokens_and_feedback_display()
 del st.session_state.question_in_tokens
 del st.session_state.question_out_tokens
 del st.session_state.question_cost
+
+if query:
+    st.experimental_rerun()
