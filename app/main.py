@@ -135,20 +135,19 @@ if app_mode == app.vars.AppMode.DOCUMENTS.value:
 history = app.get_last_k_history(app.vars.MEMORY_K)
 query = app.get_query()
 msg_box = st.empty()
+widgets = {
+        "tab_debug": tab_debug,
+        "msg_box": msg_box,
+    }
 
 if query:
     st.chat_message("user").write(query)
     st.session_state.memory.chat_memory.add_user_message(query)
 
-    msg_box = st.empty()
-
-    widgets = {
-        "tab_debug": tab_debug,
-        "msg_box": msg_box,
-    }
+    widgets["msg_box"] = st.empty()
 
     app.create_conversation()
-
+    st.session_state.debug = []
 
     if app_mode == app.vars.AppMode.DEFAULT.value:
         response = chains.get_chat_response(app.vars.index, config, history, query, widgets=widgets)
@@ -164,6 +163,7 @@ if query:
     except:
         ai_feedback = False
     chains.expander(tab=tab_debug, label="ai_feedback", expanded=False, content=ai_feedback)
+    st.session_state.debug.append({"ai_feedback":ai_feedback})
 
     resp_AIMessage = response["response"]
 
@@ -173,8 +173,13 @@ if query:
     app.db.save_interaction(conver_name, query, resp_AIMessage, config, ai_feedback, response["chunks"], response["deixis_query"])
 
     chains.expander(tab=tab_debug, label="resp_AIMessage", expanded=False, content=resp_AIMessage)
+    st.session_state.debug.append({"resp_AIMessage":resp_AIMessage})
     st.session_state.memory.chat_memory.add_ai_message(resp_AIMessage)
-
+else:
+    if "debug" in st.session_state:
+        for item in st.session_state.debug:
+            for key, value in item.items():
+                chains.expander(tab=widgets['tab_debug'], label=key, expanded=False, content=value)
 
 app.tokens_and_feedback_display()
 del st.session_state.question_in_tokens

@@ -111,6 +111,7 @@ class ChunkRetrieval(TransformChain):
             query = inputs[key]
             if self.widgets:
                 expander(tab=self.widgets['tab_debug'], label=key, expanded=(key=="deixis_query"), content=query)
+                st.session_state.debug.append({key:query})
 
         if self.widgets:
             self.widgets['msg_box'].chat_message("assistant").write("Requesting query embedding")
@@ -227,6 +228,7 @@ class ChunkFormatter(TransformChain):
         formatted_chunks = self._format_chunks(inputs["chunks"], self.app_mode)
         formatted_chunks = self._few_shot_chunk_selector(formatted_chunks)
         expander(tab=self.widgets['tab_debug'], label="formatted_chunks", expanded=False, content=formatted_chunks)
+        st.session_state.debug.append({"formatted_chunks":formatted_chunks})
         return {self.output_variables[0]: formatted_chunks}
 
 
@@ -270,6 +272,7 @@ def create_chat_conversation(history, widgets, app_mode):
     conversation.append(HumanMessagePromptTemplate.from_template(template="{query}"))
 
     expander(tab=widgets['tab_debug'], label="conversation_template", expanded=False, content=conversation)
+    st.session_state.debug.append({"conversation_template":conversation})
     return conversation
 
 
